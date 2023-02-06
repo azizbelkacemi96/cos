@@ -1,18 +1,23 @@
-from rest_framework.parsers import MultiPartParser
-from rest_framework.response import Response
 from rest_framework.views import APIView
-from ibm_botocore.client import Config
-import boto3
+from rest_framework.response import Response
+from rest_framework import status
 
-class FileUploadView(APIView):
-    parser_classes = (MultiPartParser,)
+class FileOperationsView(APIView):
 
-    def post(self, request, format=None):
-        file_obj = request.data['file']
-        cos = boto3.client('s3',
-                          endpoint_url=settings.COS_ENDPOINT,
-                          aws_access_key_id=settings.COS_ACCESS_KEY_ID,
-                          aws_secret_access_key=settings.COS_SECRET_ACCESS_KEY,
-                          config=Config(signature_version='oauth'))
-        cos.upload_fileobj(file_obj, settings.COS_BUCKET_NAME, file_obj.name)
-        return Response(status=204)
+    def post(self, request, *args, **kwargs):
+        # Logique pour effectuer une opération POST (téléchargement)
+        file = request.data.get('file')
+        # Traitement pour enregistrer le fichier
+        return Response({'message': 'File uploaded successfully'}, status=status.HTTP_201_CREATED)
+
+    def get(self, request, *args, **kwargs):
+        # Logique pour effectuer une opération GET (téléchargement)
+        # Traitement pour récupérer le fichier
+        file = # Récupération du fichier
+        return Response(file, status=status.HTTP_200_OK)
+
+    def put(self, request, *args, **kwargs):
+        # Logique pour effectuer une opération PUT (mise à jour)
+        file = request.data.get('file')
+        # Traitement pour mettre à jour le fichier
+        return Response({'message': 'File updated successfully'}, status=status.HTTP_200_OK)
