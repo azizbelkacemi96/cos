@@ -1,23 +1,27 @@
-class FileUploadViewSet(viewsets.ViewSet):
+import boto3
+from django.shortcuts import render, HttpResponse
 
-    def create(self, request, *args, **kwargs):
-        file = request.data.get('file')
-        # code pour uploader le fichier vers le COS IBM à l'aide de la bibliothèque requests
-        # ...
+# Initialize the COS client using your IBM COS credentials
+cos = boto3.client(
+    "s3",
+    aws_access_key_id="your_access_key",
+    aws_secret_access_key="your_secret_key",
+    endpoint_url="your_endpoint_url"
+)
 
-        return Response({"message": "File uploaded successfully"})
+def upload_file(request):
+    if request.method == 'POST':
+        file = request.FILES['file']
+        cos.upload_file(file.name, "your-bucket-name", file.name, ExtraArgs={'ContentType': file.content_type})
+        return HttpResponse(f"File '{file.name}' was uploaded.")
+    return render(request, 'upload.html')
 
-    def retrieve(self, request, *args, **kwargs):
-        file_id = kwargs.get('file_id')
-        # code pour récupérer le fichier du COS IBM à l'aide de la bibliothèque requests
-        # ...
+def download_file(request, file_name):
+    file = cos.get_object(Bucket="your-bucket-name", Key=file_name)
+    response = HttpResponse(file["Body"], content_type='application/force-download')
+    response['Content-Disposition'] = 'attachment; filename=' + file_name
+    return response
 
-        return Response({"message": "File retrieved successfully", "file_data": file_data})
-
-    def update(self, request, *args, **kwargs):
-        file = request.data.get('file')
-        file_id = kwargs.get('file_id')
-        # code pour mettre à jour le fichier sur le COS IBM à l'aide de la bibliothèque requests
-        # ...
-
-        return Response({"message": "File updated successfully"})
+def delete_file(request, file_name):
+    cos.delete_object(Bucket="your-bucket-name", Key=file_name)
+    return HttpResponse(f"File '{file_name}' was deleted.")
