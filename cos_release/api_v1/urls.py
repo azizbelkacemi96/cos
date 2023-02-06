@@ -1,7 +1,10 @@
-from django.urls import path
-from .views import UploadView, DownloadView
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import FileViewSet
+
+router = DefaultRouter()
+router.register(r'files', FileViewSet, basename='files')
 
 urlpatterns = [
-    path('upload/', UploadView.as_view({'post': 'create'}), name='upload'),
-    path('download/<str:key>/', DownloadView.as_view(), name='download'),
+    path('', include(router.urls)),
 ]
