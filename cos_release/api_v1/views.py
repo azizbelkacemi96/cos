@@ -1,23 +1,23 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+class FileUploadViewSet(viewsets.ViewSet):
 
-class FileOperationsView(APIView):
-
-    def post(self, request, *args, **kwargs):
-        # Logique pour effectuer une opération POST (téléchargement)
+    def create(self, request, *args, **kwargs):
         file = request.data.get('file')
-        # Traitement pour enregistrer le fichier
-        return Response({'message': 'File uploaded successfully'}, status=status.HTTP_201_CREATED)
+        # code pour uploader le fichier vers le COS IBM à l'aide de la bibliothèque requests
+        # ...
 
-    def get(self, request, *args, **kwargs):
-        # Logique pour effectuer une opération GET (téléchargement)
-        # Traitement pour récupérer le fichier
-        file = # Récupération du fichier
-        return Response(file, status=status.HTTP_200_OK)
+        return Response({"message": "File uploaded successfully"})
 
-    def put(self, request, *args, **kwargs):
-        # Logique pour effectuer une opération PUT (mise à jour)
+    def retrieve(self, request, *args, **kwargs):
+        file_id = kwargs.get('file_id')
+        # code pour récupérer le fichier du COS IBM à l'aide de la bibliothèque requests
+        # ...
+
+        return Response({"message": "File retrieved successfully", "file_data": file_data})
+
+    def update(self, request, *args, **kwargs):
         file = request.data.get('file')
-        # Traitement pour mettre à jour le fichier
-        return Response({'message': 'File updated successfully'}, status=status.HTTP_200_OK)
+        file_id = kwargs.get('file_id')
+        # code pour mettre à jour le fichier sur le COS IBM à l'aide de la bibliothèque requests
+        # ...
+
+        return Response({"message": "File updated successfully"})
