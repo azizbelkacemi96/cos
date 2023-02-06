@@ -1,29 +1,18 @@
-import os
-from ibm_boto3 import client as boto3_client
-from ibm_boto3.exceptions import NoCredentialsError
-from django.conf import settings
+from rest_framework.parsers import MultiPartParser
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from ibm_botocore.client import Config
+import boto3
 
-def upload_to_cos(file, file_name):
-    try:
-        cos = boto3_client("s3",
-                          aws_access_key_id=settings.COS_ACCESS_KEY,
-                          aws_secret_access_key=settings.COS_SECRET_KEY,
-                          endpoint_url=settings.COS_ENDPOINT,
-                          config=settings.COS_CONFIG,
-                          use_ssl=True)
-
-        cos.upload_fileobj(file, settings.COS_BUCKET, file_name)
-        return True
-    except NoCredentialsError:
-        return False
-
-class UploadFileView(APIView):
+class FileUploadView(APIView):
     parser_classes = (MultiPartParser,)
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request, format=None):
         file_obj = request.data['file']
-        file_name = file_obj.name
-        if upload_to_cos(file_obj, file_name):
-            return Response(status=status.HTTP_201_CREATED)
-        else:
-            return Response(status=status.HTTP_400_BAD_REQUEST)
+        cos = boto3.client('s3',
+                          endpoint_url=settings.COS_ENDPOINT,
+                          aws_access_key_id=settings.COS_ACCESS_KEY_ID,
+                          aws_secret_access_key=settings.COS_SECRET_ACCESS_KEY,
+                          config=Config(signature_version='oauth'))
+        cos.upload_fileobj(file_obj, settings.COS_BUCKET_NAME, file_obj.name)
+        return Response(status=204)
