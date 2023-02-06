@@ -1,10 +1,8 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import FileViewSet
-
-router = DefaultRouter()
-router.register(r'files', FileViewSet, basename='files')
+from django.urls import path
+from .views import upload_file, download_file, delete_file
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path('upload/', upload_file, name='upload'),
+    path('download/<str:file_name>/', download_file, name='download'),
+    path('delete/<str:file_name>/', delete_file, name='delete'),
 ]
