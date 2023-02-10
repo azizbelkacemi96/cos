@@ -2,7 +2,7 @@ from xml.dom.minidom import Document
 from .models import Document
 from django.core.files.storage import default_storage
 from rest_framework import serializers
-
+from manage_cos import *
 class DocumentSerializer(serializers.Serializer):
     file = serializers.FileField()
 
