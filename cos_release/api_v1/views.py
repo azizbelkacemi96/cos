@@ -1,41 +1,31 @@
+# views.py
+from django.contrib.auth.decorators import user_passes_test
 from django.shortcuts import render
-from django.http import HttpResponse
 from .models import File
+from ibm_botocore.client import Config
 import boto3
-from botocore.client import Config
+from django.conf import settings
 
+def is_admin(user):
+    return user.is_staff
+
+@user_passes_test(is_admin)
 def upload_file(request):
     if request.method == 'POST':
         file = request.FILES['file']
-        s3 = boto3.client('s3',
-                          aws_access_key_id=<access_key>,
-                          aws_secret_access_key=<secret_key>,
-                          config=Config(signature_version='s3v4'))
-        s3.upload_fileobj(file, <bucket_name>, file.name)
-        uploaded_file = File(file=file)
-        uploaded_file.save()
-        return HttpResponse("File uploaded successfully")
+
+        s3 = boto3.resource(
+            's3',
+            aws_access_key_id=settings.COS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.COS_SECRET_ACCESS_KEY,
+            config=Config(signature_version='oauth'),
+            endpoint_url=settings.COS_ENDPOINT
+        )
+
+        s3.Bucket(settings.COS_BUCKET).put_object(Key=file.name, Body=file)
+
+        uploaded_file = f"https://{settings.COS_BUCKET}.{settings.COS_ENDPOINT}/{file.name}"
+        File.objects.create(file=uploaded_file)
+
+        return render(request, 'upload.html', {'uploaded_file': uploaded_file})
     return render(request, 'upload.html')
-
-def download_file(request, file_name):
-    file = File.objects.get(file__icontains=file_name)
-    file_url = file.file.url
-    s3 = boto3.client('s3',
-                      aws_access_key_id=<access_key>,
-                      aws_secret_access_key=<secret_key>,
-                      config=Config(signature_version='s3v4'))
-    file_content = s3.get_object(Bucket=<bucket_name>, Key=file.file.name)['Body'].read()
-    response = HttpResponse(file_content, content_type='application/octet-stream')
-    response['Content-Disposition'] = 'attachment; filename={0}'.format(file.file.name)
-    return response
-
-def delete_file(request, file_name):
-    file = File.objects.get(file__icontains=file_name)
-    file_url = file.file.url
-    s3 = boto3.client('s3',
-                      aws_access_key_id=<access_key>,
-                      aws_secret_access_key=<secret_key>,
-                      config=Config(signature_version='s3v4'))
-    s3.delete_object(Bucket=<bucket_name>, Key=file.file.name)
-    file.delete()
-    return HttpResponse("File deleted successfully")
