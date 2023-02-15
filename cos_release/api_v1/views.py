@@ -14,24 +14,15 @@ class FileView(APIView):
         # Code for file upload goes here
         return Response({'message': 'File uploaded successfully'}, status=status.HTTP_201_CREATED)
 
-    @permission_required_or_403('download_file', (Bucket, 'name', 'bucket_name'))
+    @permission_required_or_403('download_file', (File, 'name', 'file_name'))
     def get(self, request, bucket_name, file_name):
-        bucket = get_object_or_404(Bucket, name=bucket_name)
+        # Get the bucket object based on the bucket name and the user's permissions
+        user_buckets = get_objects_for_user(request.user, 'download_bucket', Bucket)
+        bucket = get_object_or_404(user_buckets, name=bucket_name)
+
         file = get_object_or_404(File, name=file_name, bucket=bucket)
 
-        # Check permissions for different user groups
-        if request.user.groups.filter(name='admin').exists():
-            # Allow admin users to download from any bucket
-            content = file.content
-        elif request.user.groups.filter(name='fudji').exists() and bucket_name == 'fudji':
-            # Allow fudji users to download from fudji bucket only
-            content = file.content
-        elif request.user.groups.filter(name='ETNA').exists() and bucket_name == 'ETNA':
-            # Allow ETNA users to download from ETNA bucket only
-            content = file.content
-        else:
-            # Deny access to other users
-            raise PermissionDenied
+        content = file.content
 
         response = HttpResponse(content, content_type='application/octet-stream')
         response['Content-Disposition'] = f'attachment; filename="{file.name}"'
