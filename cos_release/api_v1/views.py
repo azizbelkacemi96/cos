@@ -1,31 +1,30 @@
-from .permissions import HasBucketAccessPermission, HasUploadPermission, HasDownloadPermission
+from django.contrib.auth.decorators import user_passes_test
+
+def is_admin(user):
+    return user.groups.filter(name='admin').exists()
+
+def is_fudji(user):
+    return user.groups.filter(name='fudji').exists()
+
+def is_etna(user):
+    return user.groups.filter(name='etna').exists()
 
 class FileView(APIView):
-    """
-    API view pour télécharger et téléverser des fichiers.
-    """
-    parser_classes = (MultiPartParser,)
+    # permission_classes = [IsAuthenticated]  # supprimée car remplacée par les fonctions is_admin, is_fudji et is_etna
 
-    def get_object(self, bucket_name, file_name):
-        try:
-            bucket = Bucket.objects.get(name=bucket_name)
-            file = bucket.files.get(name=file_name)
-            self.check_object_permissions(self.request, file)  # Vérifier les autorisations de l'utilisateur pour le fichier
-            return file
-        except (Bucket.DoesNotExist, File.DoesNotExist):
-            raise Http404
-
-    @permission_required_or_403('upload_file', (Bucket, 'name', 'bucket_name'))
-    def post(self, request, bucket_name):
-        bucket = Bucket.objects.get(name=bucket_name)
-        file = request.FILES['file']
-        new_file = File(bucket=bucket, name=file.name, file=file)
-        new_file.save()
-        return Response({'status': 'success'})
-
-    @permission_classes([HasDownloadPermission, HasBucketAccessPermission])
     def get(self, request, bucket_name, file_name):
-        file = self.get_object(bucket_name, file_name)
-        response = FileResponse(file.file)
-        response['Content-Disposition'] = f'attachment; filename={file_name}'
-        return response
+        if bucket_name == 'fudji':
+            test_func = is_fudji
+        elif bucket_name == 'etna':
+            test_func = is_etna
+        else:
+            return Response({'error': 'Bucket not allowed.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not test_func(request.user):
+            return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # traitement pour le téléchargement du fichier
+
+    @user_passes_test(is_admin)
+    def post(self, request, bucket_name):
+        # traitement pour l'upload du fichier
