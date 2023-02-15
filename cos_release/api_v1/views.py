@@ -1,40 +1,31 @@
-from guardian.core import ObjectPermissionChecker
-from rest_framework.permissions import BasePermission
+from .permissions import HasBucketAccessPermission, HasUploadPermission, HasDownloadPermission
 
-
-class HasBucketAccessPermission(BasePermission):
+class FileView(APIView):
     """
-    Permission pour vérifier si un utilisateur a accès à un bucket spécifique.
+    API view pour télécharger et téléverser des fichiers.
     """
-    def has_object_permission(self, request, view, obj):
-        checker = ObjectPermissionChecker(request.user)
-        return checker.has_perm('view_file', obj) and obj.name == view.kwargs['bucket_name']
+    parser_classes = (MultiPartParser,)
 
+    def get_object(self, bucket_name, file_name):
+        try:
+            bucket = Bucket.objects.get(name=bucket_name)
+            file = bucket.files.get(name=file_name)
+            self.check_object_permissions(self.request, file)  # Vérifier les autorisations de l'utilisateur pour le fichier
+            return file
+        except (Bucket.DoesNotExist, File.DoesNotExist):
+            raise Http404
 
-class HasUploadPermission(BasePermission):
-    """
-    Permission pour vérifier si un utilisateur a le droit de télécharger un fichier.
-    """
-    def has_permission(self, request, view):
-        user = request.user
-        if user.is_authenticated and user.groups.filter(name='admin').exists():
-            return True
+    @permission_required_or_403('upload_file', (Bucket, 'name', 'bucket_name'))
+    def post(self, request, bucket_name):
+        bucket = Bucket.objects.get(name=bucket_name)
+        file = request.FILES['file']
+        new_file = File(bucket=bucket, name=file.name, file=file)
+        new_file.save()
+        return Response({'status': 'success'})
 
-        return False
-
-
-class HasDownloadPermission(BasePermission):
-    """
-    Permission pour vérifier si un utilisateur a le droit de télécharger un fichier.
-    """
-    def has_permission(self, request, view):
-        user = request.user
-        bucket_name = view.kwargs.get('bucket_name')
-        if user.is_authenticated and (
-                user.groups.filter(name='admin').exists() or
-                (bucket_name == 'fudji' and user.groups.filter(name='fudji').exists()) or
-                (bucket_name == 'ETNA' and user.groups.filter(name='ETNA').exists())
-        ):
-            return True
-
-        return False
+    @permission_classes([HasDownloadPermission, HasBucketAccessPermission])
+    def get(self, request, bucket_name, file_name):
+        file = self.get_object(bucket_name, file_name)
+        response = FileResponse(file.file)
+        response['Content-Disposition'] = f'attachment; filename={file_name}'
+        return response
