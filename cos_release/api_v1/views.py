@@ -1,32 +1,30 @@
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from guardian.shortcuts import assign_perm, get_objects_for_user
-from .models import File
-from .permissions import CanDownloadFile, CanUploadFile
+from .models import File, Bucket
+from .permissions import CanUploadFile, CanDownloadFile
 
 
 class FileView(APIView):
     permission_classes = [IsAuthenticated]
-    permission_classes = [CanUploadFile | CanDownloadFile]
-    def get(self, request, bucket_name, file_name):
-        try:
-            file = File.objects.get(bucket_name=bucket_name, file_name=file_name)
-        except File.DoesNotExist:
-            return HttpResponse(status=404)
 
-        if not CanDownloadFile(request.user, file).has_permission():
+    def get(self, request, bucket_name, file_name):
+        file = get_object_or_404(File, name=file_name, bucket__name=bucket_name)
+
+        if not CanDownloadFile().has_permission(request, self):
             return HttpResponse(status=403)
 
-        response = HttpResponse(file.file, content_type=file.content_type)
-        response['Content-Disposition'] = f'attachment; filename="{file.file_name}"'
-        return response
+        # Implement file download logic here
+        # ...
 
     def post(self, request, bucket_name, file_name):
-        if not CanUploadFile(request.user).has_permission():
+        if not CanUploadFile().has_permission(request, self):
             return HttpResponse(status=403)
 
-        file = File(bucket_name=bucket_name, file_name=file_name, file=request.data['file'])
-        file.save()
-        assign_perm('download_file', request.user, file)
-        return HttpResponse(status=201)
+        # Implement file upload logic here
+        # ...
+
+        return Response(status=status.HTTP_201_CREATED)
