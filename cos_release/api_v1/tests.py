@@ -66,3 +66,38 @@ class FileViewTestCase(APITestCase):
         # check if the file is deleted from the database
         self.assertFalse(File.objects.filter(name='testfile').exists())
 
+from django.test import TestCase
+from rest_framework.test import APIRequestFactory
+from myapp.views import FileView
+from myapp.models import File
+from myapp.permissions import CanDeleteFile
+
+class TestFileView(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.admin_user = User.objects.create_superuser(
+            username='admin',
+            password='admin'
+        )
+        self.instance_name = 'FUDJI'
+        self.file_name = 'test.txt'
+        self.bucket_name = 'mybucket'
+
+    def test_delete_file(self):
+        # Create a file object
+        file = File.objects.create(
+            name=self.file_name,
+            user=self.admin_user,
+            size=1000,
+            bucket=self.bucket_name
+        )
+        
+        # Make a DELETE request
+        url = f'/report/{self.instance_name}/{self.file_name}/'
+        request = self.factory.delete(url)
+        request.user = self.admin_user
+        response = FileView.as_view()(request, instance_name=self.instance_name, file_name=self.file_name)
+
+        # Check that the file was deleted
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(File.objects.filter(name=self.file_name).exists())
