@@ -1,69 +1,33 @@
-package main
+import requests
+import base64
 
-import (
-	"errors"
-	"net/http"
-	"net/http/httptest"
-	"testing"
+# Remplacez ces valeurs par celles de votre application
+client_id = "your_client_id"
+client_secret = "your_client_secret"
+auth_url = "https://example.com/oauth2/token"
 
-	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-)
-
-type mockSaamService struct {
-	success bool
+# Créez les données nécessaires pour l'appel API
+payload = {
+    "grant_type": "client_credentials",
+    "scope": "your_scope"  # Remplacez "your_scope" par les scopes requis pour votre application, séparés par des espaces
 }
 
-type mockTowerService struct {
-	success bool
+# Encodez le client_id et le client_secret en utilisant le format Basic Auth
+basic_auth = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+
+# Ajoutez l'entête "Authorization" à la requête
+headers = {
+    "Authorization": f"Basic {basic_auth}",
+    "Content-Type": "application/x-www-form-urlencoded"
 }
 
-func (m *mockSaamService) GetHealthCheck(c echo.Context, scope, apcode, environement string) (bool, error) {
-	if m.success {
-		return true, nil
-	}
-	return false, errors.New("saam error")
-}
+# Effectuez l'appel API et vérifiez le statut de la réponse
+response = requests.post(auth_url, data=payload, headers=headers)
+response.raise_for_status()
 
-func (m *mockTowerService) GetHealthCheck(c echo.Context) (bool, error) {
-	if m.success {
-		return true, nil
-	}
-	return false, errors.New("tower error")
-}
+# Récupérez le token Bearer
+json_response = response.json()
+access_token = json_response["access_token"]
 
-func TestGetHealthCheck_Success(t *testing.T) {
-	e := echo.New()
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	h := &HealthCheckHandler{
-		SaamService:  &mockSaamService{success: true},
-		TowerService: &mockTowerService{success: true},
-		// ... autres champs
-	}
-
-	err := h.GetHealthCheck(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-}
-
-func TestGetHealthCheck_Failure(t *testing.T) {
-	e := echo.New()
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	h := &HealthCheckHandler{
-		SaamService:  &mockSaamService{success: false},
-		TowerService: &mockTowerService{success: true},
-		// ... autres champs
-	}
-
-	err := h.GetHealthCheck(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
-}
+# Utilisez le token Bearer dans vos appels API suivants
+print(f"Token Bearer: {access_token}")
