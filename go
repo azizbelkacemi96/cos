@@ -12,12 +12,24 @@
     service_name_gunicorn: 'gunicorn'
 
   tasks:
-    - name: Cloner le git repository
+    - name: Vérifier si .git existe dans le dossier de destination
+      stat:
+        path: "{{ dest_directory }}/.git"
+      register: git_dir
+
+    - name: Mettre à jour le dépôt Git existant
+      git:
+        repo: "{{ repository_url }}"
+        dest: "{{ dest_directory }}"
+        update: yes
+      when: git_dir.stat.exists
+
+    - name: Cloner le dépôt Git dans un nouveau dossier
       git:
         repo: "{{ repository_url }}"
         dest: "{{ dest_directory }}"
         clone: yes
-        update: yes
+      when: not git_dir.stat.exists
 
     - name: Changer le propriétaire du répertoire
       file:
