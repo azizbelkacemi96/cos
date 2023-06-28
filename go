@@ -1,64 +1,25 @@
----
-- hosts: votre_hote
-  gather_facts: no
-  become: yes
-  vars:
-    repository_url: 'url_de_votre_repository'
-    dest_directory: '/applis/26482-tdgg'
-    owner: 'xlrel'
-    group: 'xlrel'
-    python_version: '3.8'
-    service_name_nginx: 'nginx'
-    service_name_gunicorn: 'gunicorn'
+import psycopg2
 
-  tasks:
-    - name: Vérifier si .git existe dans le dossier de destination
-      stat:
-        path: "{{ dest_directory }}/.git"
-      register: git_dir
+try:
+    connection = psycopg2.connect(user="db_user",
+                                  password="db_password",
+                                  host="db_host",
+                                  port="db_port",
+                                  database="tower_database")
 
-    - name: Mettre à jour le dépôt Git existant
-      git:
-        repo: "{{ repository_url }}"
-        dest: "{{ dest_directory }}"
-        update: yes
-      when: git_dir.stat.exists
+    cursor = connection.cursor()
 
-    - name: Cloner le dépôt Git dans un nouveau dossier
-      git:
-        repo: "{{ repository_url }}"
-        dest: "{{ dest_directory }}"
-        clone: yes
-      when: not git_dir.stat.exists
+    # Compte le nombre d'hôtes dans la table main_host
+    cursor.execute("SELECT COUNT(*) FROM main_host;")
 
-    - name: Changer le propriétaire du répertoire
-      file:
-        path: "{{ dest_directory }}"
-        owner: "{{ owner }}"
-        group: "{{ group }}"
-        state: directory
-        recurse: yes
+    host_count = cursor.fetchone()[0]
 
-    - name: Créer un environnement virtuel Python
-      command: python{{ python_version }} -m venv venv
-      args:
-        chdir: "{{ dest_directory }}"
-        creates: "{{ dest_directory }}/venv"
+    print(f"Total hosts: {host_count}")
 
-    - name: Installer les dépendances à partir de requirements.txt
-      pip:
-        requirements: "{{ dest_directory }}/requirements.txt"
-        virtualenv: "{{ dest_directory }}/venv"
+except (Exception, psycopg2.Error) as error:
+    print("Error while connecting to PostgreSQL", error)
 
-    - name: Démarrer le service Nginx
-      systemd:
-        name: "{{ service_name_nginx }}"
-        state: started
-        enabled: yes
-
-    - name: Démarrer le service Gunicorn
-      systemd:
-        name: "{{ service_name_gunicorn }}"
-        state: started
-        enabled: yes
-...
+finally:
+    if connection:
+        cursor.close()
+        connection.close()
