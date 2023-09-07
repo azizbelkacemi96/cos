@@ -1,0 +1,68 @@
+import click
+import logging
+from awxkit.api.pages import Root
+from awxkit.exceptions import NotFoundException
+
+# Logging configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@click.command()
+@click.option('--url', prompt=True, help='URL of your AWX instance')
+@click.option('--username', prompt=True, help='AWX username')
+@click.option('--password', prompt=True, hide_input=True, help='AWX password')
+@click.option('--template-name', prompt=True, help='Name of the job template to search for and launch')
+@click.option('--new-name', default='', help='New name for the job template')
+@click.option('--playbook', default='', help='Name of the playbook to run')
+@click.option('--inventory', default='', help='Name of the inventory to use')
+@click.option('--project', default='', help='Name of the project to use')
+@click.option('--extra-vars', default='', help='Extra variables for the job in JSON format')
+@click.option('--verbosity', default='normal', type=click.Choice(['none', 'normal', 'verbose', 'very_verbose', 'debug']),
+              help='Verbosity level for the job')
+@click.option('--tags', default='', help='Tags to use for the playbook, separated by commas')
+@click.option('--skip-tags', default='', help='Tags to skip for the playbook, separated by commas')
+def launch_awx_job(url, username, password, template_name, new_name, playbook, inventory, project, extra_vars, verbosity, tags, skip_tags):
+    """
+    Launch an AWX job template based on the provided name.
+    """
+    config = {
+        'base_url': url,
+        'username': username,
+        'password': password,
+    }
+
+    try:
+        root = Root().get(**config)
+        job_template = root.list('job_templates', name=template_name).results[0]
+
+        # Updating details of the job_template
+        if new_name:
+            job_template.name = new_name
+        if playbook:
+            job_template.playbook = playbook
+        if inventory:
+            inv = root.list('inventories', name=inventory).results[0]
+            job_template.inventory = inv.id
+        if project:
+            proj = root.list('projects', name=project).results[0]
+            job_template.project = proj.id
+        job_template.save()  # Save the modifications
+
+        launch_data = {
+            'extra_vars': extra_vars,
+            'verbosity': verbosity,
+            'job_tags': tags,
+            'skip_tags': skip_tags,
+        }
+
+        job = job_template.launch(**launch_data)
+
+        logger.info(f"Job {job.id} launched successfully with verbosity: {verbosity}")
+
+    except NotFoundException:
+        logger.error(f"The job template '{template_name}' was not found in AWX/Tower.")
+    except Exception as e:
+        logger.error(f"An error occurred while launching the job template: {str(e)}")
+
+if __name__ == '__main__':
+    launch_awx_job()
