@@ -1,55 +1,97 @@
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
+import logging
+import json
+import requests
+import re
+import os
+import click
+from requests.auth import HTTPBasicAuth
 
-def send_email_with_attachment(sender_email, receiver_email, subject, body, attached_file):
-    # Create an MIMEMultipart object
-    message = MIMEMultipart()
-    message['From'] = sender_email
-    message['To'] = receiver_email
-    message['Subject'] = subject
+logging.basicConfig(level=os.environ.get("DEBUG_LEVEL", "INFO"))
+logger = logging.getLogger("manage_users_in_team")
 
-    # Message body
-    message.attach(MIMEText(body, 'plain'))
+admin_user = os.getenv("TOWER_USER")
+admin_password = os.getenv("TOWER_PASSWORD")
+exclude_list = json.loads(os.getenv("EXCLUDE_LIST"))
+delete_only = bool(os.getenv("DELETE_ONLY"))
+tower_url = os.getenv("TOWER_URL")
+ignore_certs_validation = bool(os.getenv("IGNORE_CERTS_VALIDATION"))
 
-    # Open the file in binary mode
-    with open(attached_file, 'rb') as attachment:
-        part = MIMEBase('application', 'octet-stream')
-        part.set_payload(attachment.read())
+def get_tower_users(certs_validation):
+    user_list = []
+    page = 1
+    page_size = 200
+    
+    while True:
+        url = f"{tower_url}/api/v2/users/?page={page}&page_size={page_size}&order_by=id"
+        response = requests.get(url, verify=certs_validation, auth=(admin_user, admin_password), headers={"content_type": "application/json"})
+        response.raise_for_status()
+        
+        for user in response.json()["results"]:
+            if user["external_account"] in ["ldap", "social"] and re.match("^\w\d{5}$", user["username"]):
+                user_list.append({
+                    "id": str(user["id"]),
+                    "uid": user["username"],
+                    "first_name": user["first_name"],
+                    "last_name": user["last_name"],
+                })
 
-    # Encode the file in base64
-    encoders.encode_base64(part)
+        if response.json()["next"] is None:
+            break
+        else:
+            page += 1
 
-    # Add file attachment headers
-    part.add_header('Content-Disposition', f"attachment; filename= {attached_file}")
+    return user_list
 
-    # Attach the file to the message
-    message.attach(part)
+def get_id(endpoint, certs_validation):
+    try:
+        result_api = requests.get(endpoint, verify=certs_validation, auth=(admin_user, admin_password), headers={"content_type": "application/json"})
+        result_api.raise_for_status()
+    except requests.exceptions.RequestException as fail:
+        logger.error("Error in get_id")
+        raise fail
+    
+    response = result_api.json()
+    return response["results"][0]["id"] if response["results"] else None
 
-    # Establish an SMTP connection with the server
-    smtp_server = smtplib.SMTP('smtp.example.com', 587)  # Replace with the appropriate SMTP server details
-    smtp_server.starttls()
+def delete_user_from_team(delete_user_list, team_name, certs_validation):
+    team_id = get_id(f"{tower_url}/api/v2/teams/?name={team_name}", certs_validation)
+    
+    for delete_user in delete_user_list:
+        user_id = get_id(f"{tower_url}/api/v2/users/?username={delete_user}", certs_validation)
+        if user_id:
+            endpoint = f"{tower_url}/api/v2/teams/{team_id}/users/"
+            try:
+                result_api = requests.post(
+                    endpoint,
+                    verify=certs_validation, auth=(admin_user, admin_password), headers={"content_type": "application/json"},
+                    data=json.dumps({"id": int(user_id), "disassociate": True}),
+                )
+                result_api.raise_for_status()
+            except requests.exceptions.RequestException as fail:
+                logger.error("Error deleting user from team")
+                raise fail
 
-    # Log in to the sender's account
-    sender_password = "your_password"  # Replace with the sender's password
-    smtp_server.login(sender_email, sender_password)
+def add_users_to_team(exclude_list=[], delete_only=False, team_name="", ignore_certs_validation=False):
+    certs_validation = not ignore_certs_validation
+    user_list = get_tower_users(certs_validation)
+    team_id = get_id(f"{tower_url}/api/v2/teams/?name={team_name}", certs_validation)
 
-    # Send the email
-    full_message = message.as_string()
-    smtp_server.sendmail(sender_email, receiver_email, full_message)
+    if delete_only:
+        delete_user_from_team(exclude_list, team_name, certs_validation)
+    else:
+        for user in user_list:
+            if user["uid"] not in exclude_list:
+                endpoint = f"{tower_url}/api/v2/teams/{team_id}/users/"
+                try:
+                    result_api = requests.post(
+                        endpoint,
+                        verify=certs_validation, auth=(admin_user, admin_password), headers={"content_type": "application/json"},
+                        data=json.dumps({"id": int(user["id"])}),
+                    )
+                    result_api.raise_for_status()
+                except requests.exceptions.RequestException as fail:
+                    logger.error("Error adding user to team")
+                    raise fail
 
-    # Quit the SMTP session
-    smtp_server.quit()
-
-    print("The email has been sent successfully.")
-
-# Example usage of the function
-sender_email = "your_email@gmail.com"
-receiver_email = "recipient@example.com"
-subject = "Subject of the email"
-body = "This is the body of the email."
-attached_file = "path/to/your_file.pdf"
-
-send_email_with_attachment(sender_email, receiver_email, subject, body, attached_file)
+if __name__ == "__main__":
+    add_users_to_team(exclude_list, delete_only, team_name, ignore_certs_validation)
