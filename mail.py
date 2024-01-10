@@ -1,97 +1,69 @@
-import logging
-import json
 import requests
-import re
-import os
-import click
+import datetime
 from requests.auth import HTTPBasicAuth
 
-logging.basicConfig(level=os.environ.get("DEBUG_LEVEL", "INFO"))
-logger = logging.getLogger("manage_users_in_team")
+# Configuration d'Ansible Tower
+TOWER_HOST = 'https://your-tower-instance.com'
+TOWER_USERNAME = 'your-username'
+TOWER_PASSWORD = 'your-password'
+TOWER_VERIFY_SSL = True  # Set to False if you don't want to verify SSL certificates
 
-admin_user = os.getenv("TOWER_USER")
-admin_password = os.getenv("TOWER_PASSWORD")
-exclude_list = json.loads(os.getenv("EXCLUDE_LIST"))
-delete_only = bool(os.getenv("DELETE_ONLY"))
-tower_url = os.getenv("TOWER_URL")
-ignore_certs_validation = bool(os.getenv("IGNORE_CERTS_VALIDATION"))
+# Fonction pour obtenir le token d'authentification
+def get_auth_token():
+    auth_url = f'{TOWER_HOST}/api/v2/authtoken/'
+    auth_data = {'username': TOWER_USERNAME, 'password': TOWER_PASSWORD}
+    response = requests.post(auth_url, json=auth_data, verify=TOWER_VERIFY_SSL)
+    response.raise_for_status()
+    return response.json().get('token', None)
 
-def get_tower_users(certs_validation):
-    user_list = []
-    page = 1
-    page_size = 200
-    
-    while True:
-        url = f"{tower_url}/api/v2/users/?page={page}&page_size={page_size}&order_by=id"
-        response = requests.get(url, verify=certs_validation, auth=(admin_user, admin_password), headers={"content_type": "application/json"})
-        response.raise_for_status()
-        
-        for user in response.json()["results"]:
-            if user["external_account"] in ["ldap", "social"] and re.match("^\w\d{5}$", user["username"]):
-                user_list.append({
-                    "id": str(user["id"]),
-                    "uid": user["username"],
-                    "first_name": user["first_name"],
-                    "last_name": user["last_name"],
-                })
+# Fonction pour obtenir la date actuelle au format ISO 8601
+def get_current_date():
+    return datetime.datetime.now().isoformat()
 
-        if response.json()["next"] is None:
-            break
+# Fonction pour supprimer une organisation par ID
+def delete_organization(organization_id):
+    organization_url = f'{TOWER_HOST}/api/v2/organizations/{organization_id}/'
+    response = requests.delete(organization_url, auth=HTTPBasicAuth(TOWER_USERNAME, TOWER_PASSWORD), verify=TOWER_VERIFY_SSL)
+    response.raise_for_status()
+    return response.status_code
+
+# Obtenez le token d'authentification
+auth_token = get_auth_token()
+
+# Vérifiez si le token est disponible
+if auth_token:
+    # Configurez les en-têtes avec le token d'authentification
+    headers = {'Authorization': f'Token {auth_token}'}
+
+    # Récupérez la liste des organisations
+    organizations_url = f'{TOWER_HOST}/api/v2/organizations/'
+    organizations_response = requests.get(organizations_url, headers=headers, verify=TOWER_VERIFY_SSL)
+    organizations_response.raise_for_status()
+    organizations = organizations_response.json().get('results', [])
+
+    # Récupérez la date actuelle
+    current_date = get_current_date()
+
+    # Parcourez toutes les organisations
+    for organization in organizations:
+        organization_id = organization['id']
+        organization_name = organization['name']
+
+        # Récupérez la liste des jobs de l'organisation
+        jobs_url = f'{TOWER_HOST}/api/v2/organizations/{organization_id}/jobs/'
+        jobs_response = requests.get(jobs_url, headers=headers, verify=TOWER_VERIFY_SSL)
+        jobs_response.raise_for_status()
+        jobs = jobs_response.json().get('results', [])
+
+        # Vérifiez si des jobs ont été exécutés au cours des 3 derniers mois
+        recent_jobs = [job for job in jobs if current_date - datetime.datetime.strptime(job['finished'], '%Y-%m-%dT%H:%M:%S.%fZ') < datetime.timedelta(days=90)]
+
+        # Si aucun job récent, supprimez l'organisation
+        if not recent_jobs:
+            print(f"Aucune activité récente pour l'organisation {organization_name}. Suppression en cours...")
+            delete_organization(organization_id)
+            print(f"L'organisation {organization_name} a été supprimée.")
         else:
-            page += 1
-
-    return user_list
-
-def get_id(endpoint, certs_validation):
-    try:
-        result_api = requests.get(endpoint, verify=certs_validation, auth=(admin_user, admin_password), headers={"content_type": "application/json"})
-        result_api.raise_for_status()
-    except requests.exceptions.RequestException as fail:
-        logger.error("Error in get_id")
-        raise fail
-    
-    response = result_api.json()
-    return response["results"][0]["id"] if response["results"] else None
-
-def delete_user_from_team(delete_user_list, team_name, certs_validation):
-    team_id = get_id(f"{tower_url}/api/v2/teams/?name={team_name}", certs_validation)
-    
-    for delete_user in delete_user_list:
-        user_id = get_id(f"{tower_url}/api/v2/users/?username={delete_user}", certs_validation)
-        if user_id:
-            endpoint = f"{tower_url}/api/v2/teams/{team_id}/users/"
-            try:
-                result_api = requests.post(
-                    endpoint,
-                    verify=certs_validation, auth=(admin_user, admin_password), headers={"content_type": "application/json"},
-                    data=json.dumps({"id": int(user_id), "disassociate": True}),
-                )
-                result_api.raise_for_status()
-            except requests.exceptions.RequestException as fail:
-                logger.error("Error deleting user from team")
-                raise fail
-
-def add_users_to_team(exclude_list=[], delete_only=False, team_name="", ignore_certs_validation=False):
-    certs_validation = not ignore_certs_validation
-    user_list = get_tower_users(certs_validation)
-    team_id = get_id(f"{tower_url}/api/v2/teams/?name={team_name}", certs_validation)
-
-    if delete_only:
-        delete_user_from_team(exclude_list, team_name, certs_validation)
-    else:
-        for user in user_list:
-            if user["uid"] not in exclude_list:
-                endpoint = f"{tower_url}/api/v2/teams/{team_id}/users/"
-                try:
-                    result_api = requests.post(
-                        endpoint,
-                        verify=certs_validation, auth=(admin_user, admin_password), headers={"content_type": "application/json"},
-                        data=json.dumps({"id": int(user["id"])}),
-                    )
-                    result_api.raise_for_status()
-                except requests.exceptions.RequestException as fail:
-                    logger.error("Error adding user to team")
-                    raise fail
-
-if __name__ == "__main__":
-    add_users_to_team(exclude_list, delete_only, team_name, ignore_certs_validation)
+            print(f"Des activités récentes ont été détectées pour l'organisation {organization_name}. Aucune action nécessaire.")
+else:
+    print("Impossible d'obtenir le token d'authentification.")
