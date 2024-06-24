@@ -1,79 +1,70 @@
-import groovy.json.JsonSlurper
+class ArgoCDAppManager {
+    String argocdServer
+    String argocdToken
+    String project
+    String helmChart
+    String appName
+    String helmValuesFile
+    String destServer
+    String destNamespace
+    String helmRepoUrl
+    String revision
+    String argocdAppFile
+    String appParams
 
-class ArgoCDHelper {
-    def argocdServer
-    def argocdToken
-    def argocdProject
-    def helmChart
-    def appName
-    def helmValuesFile
-    def destServer
-    def destNamespace
-    def helmRepoUrl
-    def revision
-
-    ArgoCDHelper(String argocdServer, String argocdToken, String argocdProject, String helmChart, String appName, String helmValuesFile, String destServer, String destNamespace, String helmRepoUrl, String revision) {
+    ArgoCDAppManager(String argocdServer, String argocdToken, String project, String appName, String destServer, String destNamespace, String helmChart = '', String helmValuesFile = '', String helmRepoUrl = '', String revision = '', String argocdAppFile = '', String appParams = '') {
         this.argocdServer = argocdServer
         this.argocdToken = argocdToken
-        this.argocdProject = argocdProject
-        this.helmChart = helmChart
+        this.project = project
         this.appName = appName
-        this.helmValuesFile = helmValuesFile
         this.destServer = destServer
         this.destNamespace = destNamespace
+        this.helmChart = helmChart
+        this.helmValuesFile = helmValuesFile
         this.helmRepoUrl = helmRepoUrl
         this.revision = revision
+        this.argocdAppFile = argocdAppFile
+        this.appParams = appParams
     }
 
-    def deployHelmChart() {
-        println "Deploying helm chart $helmChart to $destServer/$destNamespace using ArgoCD $argocdServer/$argocdProject"
-
-        println "--server $argocdServer"
-        println "--auth-token $argocdToken"
-        println "--project $argocdProject"
-        println "--repo $helmRepoUrl"
-        println "--revision $revision"
-        println "--dest-server $destServer"
-        println "--dest-namespace $destNamespace"
-        println "--path $helmChart"
-        println "--name $appName"
-
-        // Prepare the helm values file
-        println "Preparing helm values file"
-        def helmSetParameters = "--values"
-        def files = helmValuesFile.split(',')
-        for (file in files) {
-            helmSetParameters += " ${file}"
-        }
-
-        println helmSetParameters
-
-        // Create the application in ArgoCD
-        def cmd = "argocd app create $appName --gprc-web --upsert --project $argocdProject --server $argocdServer --auth-token $argocdToken --repo $helmRepoUrl --revision $revision ${helmSetParameters} --helm-pass-credentials --dest-server $destServer --dest-namespace $destNamespace --path $helmChart"
-        def process = cmd.execute()
+    void executeCommand(String command) {
+        Process process = command.execute()
         process.waitFor()
-
+        String output = process.in.text
+        String error = process.err.text
         if (process.exitValue() != 0) {
-            throw new RuntimeException("Failed to deploy helm chart $helmChart to $destServer/$destNamespace using ArgoCD $argocdServer/$argocdProject")
+            throw new RuntimeException("Error executing command: $error")
         }
+        println(output)
     }
 
-    def setAppParameters(String appParams) {
-        // Parse the helm values file map string into key=value pairs
-        def params = ""
-        def jsonSlurper = new JsonSlurper()
-        def map = jsonSlurper.parseText(appParams)
-        map.each { key, value ->
-            params += " --parameter ${key}=${value}"
-        }
+    void createWithHelm() {
+        String helmSetParameters = helmValuesFile ? "--values ${helmValuesFile.split(',').join(' --values ')}" : ""
+        String command = "argocd app create $appName --grpc-web --upsert --project $project --server $argocdServer --auth-token $argocdToken --repo $helmRepoUrl --revision $revision ${helmSetParameters} --helm-pass-credentials --dest-server $destServer --dest-namespace $destNamespace --path $helmChart"
+        executeCommand(command)
+    }
 
-        // Set the parameters for the application in ArgoCD
-        def cmd = "argocd app set $appName --gprc-web --server $argocdServer --auth-token $argocdToken ${params}"
-        def process = cmd.execute()
-        process.waitFor()
+    void createFromfile() {
+        executeCommand("argocd app create --grpc-web --server $argocdServer --auth-token $argocdToken --file $argocdAppFile")
+    }
 
-        if (process.exitValue() != 0) {
-            throw new RuntimeException("Failed to set parameters for application $appName in ArgoCD $argocdServer/$argocdProject")
-        }
+    void sync() {
+        executeCommand("argocd app sync --grpc-web $appName --server $argocdServer --auth-token $argocdToken")
+    }
+
+    void waitForStatus() {
+        executeCommand("argocd app wait --grpc-web --timeout 600 $appName --server $argocdServer --auth-token $argocdToken")
+    }
+
+    void delete() {
+        executeCommand("argocd app delete --grpc-web $appName --server $argocdServer --auth-token $argocdToken")
+    }
+
+    void setAppParameters() {
+        String params = appParams.split('\n').collect { pair ->
+            def (key, value) = pair.split(':').collect { it.trim() }
+            "--parameter ${key}=${value}"
+        }.join(' ')
+        executeCommand("argocd app set $appName --grpc-web --server $argocdServer --auth-token $argocdToken ${params}")
     }
 }
