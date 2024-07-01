@@ -1,70 +1,108 @@
-class ArgoCDAppManager {
-    String argocdServer
-    String argocdToken
-    String project
-    String helmChart
-    String appName
-    String helmValuesFile
-    String destServer
-    String destNamespace
-    String helmRepoUrl
-    String revision
-    String argocdAppFile
-    String appParams
+import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+import groovy.transform.ToString
 
-    ArgoCDAppManager(String argocdServer, String argocdToken, String project, String appName, String destServer, String destNamespace, String helmChart = '', String helmValuesFile = '', String helmRepoUrl = '', String revision = '', String argocdAppFile = '', String appParams = '') {
-        this.argocdServer = argocdServer
-        this.argocdToken = argocdToken
-        this.project = project
-        this.appName = appName
-        this.destServer = destServer
-        this.destNamespace = destNamespace
-        this.helmChart = helmChart
-        this.helmValuesFile = helmValuesFile
-        this.helmRepoUrl = helmRepoUrl
-        this.revision = revision
-        this.argocdAppFile = argocdAppFile
-        this.appParams = appParams
+class PipelinePromoter {
+    String gitlabUrl
+    String projectId
+    String branch
+    String username
+    String password
+    String triggerToken
+
+    PipelinePromoter(String gitlabUrl, String projectId, String branch, String username, String password, String triggerToken) {
+        this.gitlabUrl = gitlabUrl
+        this.projectId = projectId
+        this.branch = branch
+        this.username = username
+        this.password = password
+        this.triggerToken = triggerToken
     }
 
-    void executeCommand(String command) {
-        Process process = command.execute()
-        process.waitFor()
-        String output = process.in.text
-        String error = process.err.text
-        if (process.exitValue() != 0) {
-            throw new RuntimeException("Error executing command: $error")
+    String getAccessToken() {
+        // Code to generate an access token using GitLab API
+        def apiUrl = "${gitlabUrl}/api/v4/authorization"
+        def requestBody = [
+            name: "PipelinePromoter Token",
+            scopes: ["api"],
+            expires_at: (new Date().time + 3600) // Token expires in 1 hour
+        ]
+
+        // Make a POST request to create a new token
+        def response = new URL(apiUrl).openConnection().with {
+            requestMethod = 'POST'
+            doOutput = true
+            setRequestProperty('Content-Type', 'application/json')
+            setRequestProperty('Authorization', "Basic ${"$username:$password".bytes.encodeBase64().toString()}")
+            outputStream.withWriter { writer ->
+                writer.write(JsonOutput.toJson(requestBody))
+            }
+            inputStream.text
         }
-        println(output)
+
+        // Parse the response to get the access token
+        def accessToken = new JsonSlurper().parseText(response).token
+
+        // Return the access token
+        return accessToken
     }
 
-    void createWithHelm() {
-        String helmSetParameters = helmValuesFile ? "--values ${helmValuesFile.split(',').join(' --values ')}" : ""
-        String command = "argocd app create $appName --grpc-web --upsert --project $project --server $argocdServer --auth-token $argocdToken --repo $helmRepoUrl --revision $revision ${helmSetParameters} --helm-pass-credentials --dest-server $destServer --dest-namespace $destNamespace --path $helmChart"
-        executeCommand(command)
+    void triggerPipelineJob() {
+        // Code to trigger the pipeline job using GitLab API
+        // You can use libraries like HTTPBuilder or RESTClient to make API calls
+        def apiUrl = "${gitlabUrl}/api/v4/projects/${projectId}/pipeline"
+        def requestBody = [
+            ref: branch,
+            variables: [
+                GITLAB_USER: username,
+                GITLAB_PASSWORD: password,
+                TRIGGER_TOKEN: triggerToken
+            ]
+        ]
+
+        // Make a POST request to trigger the pipeline job
+        def response = new URL(apiUrl).openConnection().with {
+            requestMethod = 'POST'
+            doOutput = true
+            setRequestProperty('Content-Type', 'application/json')
+            setRequestProperty('PRIVATE-TOKEN', getAccessToken())
+            outputStream.withWriter { writer ->
+                writer.write(JsonOutput.toJson(requestBody))
+            }
+            inputStream.text
+        }
+
+        // Parse the response to get the pipeline ID
+        def pipelineId = new JsonSlurper().parseText(response).id
+
+        // Print the pipeline ID
+        println "Triggered pipeline with ID: ${pipelineId}"
     }
 
-    void createFromfile() {
-        executeCommand("argocd app create --grpc-web --server $argocdServer --auth-token $argocdToken --file $argocdAppFile")
-    }
+    void getPipelineLog() {
+        // Code to retrieve the pipeline log using GitLab API
+        // You can use libraries like HTTPBuilder or RESTClient to make API calls
+        def apiUrl = "${gitlabUrl}/api/v4/projects/${projectId}/pipelines/${pipelineId}/jobs"
+        def response = new URL(apiUrl).openConnection().with {
+            requestMethod = 'GET'
+            setRequestProperty('Content-Type', 'application/json')
+            setRequestProperty('PRIVATE-TOKEN', getAccessToken())
+            inputStream.text
+        }
 
-    void sync() {
-        executeCommand("argocd app sync --grpc-web $appName --server $argocdServer --auth-token $argocdToken")
-    }
+        // Parse the response to get the job ID
+        def jobId = new JsonSlurper().parseText(response)[0].id
 
-    void waitForStatus() {
-        executeCommand("argocd app wait --grpc-web --timeout 600 $appName --server $argocdServer --auth-token $argocdToken")
-    }
+        // Make a GET request to retrieve the job log
+        def logUrl = "${gitlabUrl}/api/v4/projects/${projectId}/jobs/${jobId}/trace"
+        def logResponse = new URL(logUrl).openConnection().with {
+            requestMethod = 'GET'
+            setRequestProperty('PRIVATE-TOKEN', getAccessToken())
+            inputStream.text
+        }
 
-    void delete() {
-        executeCommand("argocd app delete --grpc-web $appName --server $argocdServer --auth-token $argocdToken")
-    }
-
-    void setAppParameters() {
-        String params = appParams.split('\n').collect { pair ->
-            def (key, value) = pair.split(':').collect { it.trim() }
-            "--parameter ${key}=${value}"
-        }.join(' ')
-        executeCommand("argocd app set $appName --grpc-web --server $argocdServer --auth-token $argocdToken ${params}")
+        // Print the job log
+        println "Pipeline Log:"
+        println logResponse
     }
 }
