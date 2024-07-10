@@ -1,57 +1,34 @@
-# Jenkinsfile for Image Promotion and Application Deployment with ArgoCD
-
-This Jenkinsfile utilizes a shared library called `sharedlib-cd` to provide two main functionalities:
-
-1. **Image Promotion**
-2. **Application Deployment with ArgoCD**
-
-## Prerequisites
-
-Before using this Jenkinsfile, make sure you have installed the following plugins in your Jenkins instance:
-
-- **Credentials Binding Plugin**
-- **Pipeline: Groovy**
-- **Shared Libraries**
-
-## Image Promotion
-
-Image promotion uses the `promote` function from the `sharedlib-cd` shared library. This function takes the following parameters:
-
-- `ARTIFACTORY_REGISTRY`: URL of the Artifactory registry
-- `IMAGE_SOURCE`: Name of the source image to promote
-- `IBM_CONTAINER_REGISTRY`: URL of the IBM Container registry
-- `IBMSID_PATH`: Path to the IBM SID file
-- `IMAGE_TARGET`: Name of the target image to promote
-- `VAULT_NAMESPACE`: Vault namespace for authentication
-- `VAULT_AUTH_TOKEN`: Vault authentication token
-- `<ECOSYSTEM>_promote_ci_project_id`: CI project ID to promote. Replace `<ECOSYSTEM>` with the appropriate value for your ecosystem. See the **Finding the CI Project ID** section for details.
-- `GITLAB_PROJECT_BRANCH`: GitLab project branch to promote
-- `PROMOTE_CI_TRIGGER_TOKEN`: Trigger token for the promotion CI pipeline
-- `VAULT_ADDR`: Vault address for authentication
-- `PROMOTE_CI_API_TOKEN`: API token for the promotion CI pipeline
-
-### Finding the CI Project ID
-
-To find the CI project ID to promote, follow these steps:
-
-1. Go to the CI project page in GitLab.
-2. Click the "Settings" button in the left menu.
-3. Click the "CI/CD" button in the left menu.
-4. Copy the value of "Project ID" into the "Promote CI Project ID" field in your Jenkins pipeline.
-
-## Application Deployment with ArgoCD
-
-Application deployment with ArgoCD uses several functions from the `sharedlib-cd` shared library. All these functions take the following parameters:
-
-- `ARGOCD_SERVER`: ArgoCD server URL
-- `HELM_REPO_URL`: Helm repository URL for deployment
-- `HELM_CHART_PATH`: Path to the Helm chart for deployment
-- `APP_NAME`: Name of the application to deploy
-- `ARGOCD_PROJECT_NAME`: ArgoCD project name for deployment
-- `REVISION`: Helm chart revision for deployment
-- `DEST_SERVER`: Destination server name for deployment
-- `DEST_NAMESPACE`: Destination namespace for deployment
-- `HELM_VALUES_FILES`: Helm values files for deployment
-- `ARGOCD_APP_FILE`: ArgoCD application configuration file to use
-
-Feel free to customize this content based on your specific configuration. If you have any other questions, I'm here to assist! 😊
+argocdCreateAppWithHelm: creates a new ArgoCD application using a Helm chart. This method takes the following parameters:
+ARGOCD_SERVER: the URL of the ArgoCD server
+HELM_REPO_URL: the URL of the Helm repository containing the application chart
+HELM_CHART_PATH: the path to the application chart in the Helm repository
+APP_NAME: the name of the application to create in ArgoCD
+ARGOCD_PROJECT_NAME: the name of the ArgoCD project in which the application will be created
+REVISION: the revision of the application chart to deploy
+DEST_SERVER: the URL of the target Kubernetes cluster
+DEST_NAMESPACE: the target Kubernetes namespace where the application will be deployed
+HELM_VALUES_FILES: the path to the Helm values files used to configure the application to be deployed
+ARGOCD_APP_FILE: the path to the YAML file containing the definition of the ArgoCD application
+APP_PARAMS: additional parameters to pass to the application deployment
+argocdAppDelete: deletes an existing ArgoCD application. This method takes the following parameters:
+ARGOCD_SERVER: the URL of the ArgoCD server
+APP_NAME: the name of the application to delete in ArgoCD
+ARGOCD_PROJECT_NAME: the name of the ArgoCD project in which the application is created
+argocdAppSync: synchronizes an existing ArgoCD application with the target Kubernetes cluster. This method takes the following parameters:
+ARGOCD_SERVER: the URL of the ArgoCD server
+APP_NAME: the name of the application to synchronize in ArgoCD
+ARGOCD_PROJECT_NAME: the name of the ArgoCD project in which the application is created
+argocdAppStatus: retrieves the status of an existing ArgoCD application. This method takes the following parameters:
+ARGOCD_SERVER: the URL of the ArgoCD server
+APP_NAME: the name of the application whose status is to be retrieved in ArgoCD
+ARGOCD_PROJECT_NAME: the name of the ArgoCD project in which the application is created
+argocdCreateAppFromFile: creates a new ArgoCD application using a YAML file. This method takes the following parameters:
+ARGOCD_SERVER: the URL of the ArgoCD server
+APP_NAME: the name of the application to create in ArgoCD
+ARGOCD_PROJECT_NAME: the name of the ArgoCD project in which the application will be created
+ARGOCD_APP_FILE: the path to the YAML file containing the definition of the ArgoCD application
+argocdSetAppParameters: sets the parameters of an existing ArgoCD application. This method takes the following parameters:
+ARGOCD_SERVER: the URL of the ArgoCD server
+APP_NAME: the name of the application whose parameters are to be set in ArgoCD
+ARGOCD_PROJECT_NAME: the name of the ArgoCD project in which the application is created
+APP_PARAMS: the parameters to set for the ArgoCD application
