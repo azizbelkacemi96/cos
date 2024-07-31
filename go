@@ -47,12 +47,13 @@ func TestCreateCyberArkServiceList(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Création de la liste de services CyberArk
-	cyberArkServiceList := make(map[string][]services.CyberArkServiceInterface)
+	cyberArkServiceList := make(map[string]services.CyberArkServiceInterface)
 
 	// Parcours de chaque instance CyberArk
-	for idx, cyberArkInstance := range cyberArkMapping {
-		// Construction d'une clé unique pour chaque service
+	for _, cyberArkInstance := range cyberArkMapping {
 		for key, instance := range cyberArkInstance {
+			// Construction d'une clé unique en utilisant l'appID
+			uniqueKey := fmt.Sprintf("%s-%s", key, instance["appID"])
 			if instance["sdkPath"] == "" {
 				// Création du service API
 				service, err := services.NewCyberArkAPIService(
@@ -65,7 +66,7 @@ func TestCreateCyberArkServiceList(t *testing.T) {
 					t.Fatalf("Failed to create CyberArk APIService for %s: %v", key, err)
 				}
 				// Ajout du service à la liste correspondante
-				cyberArkServiceList[key] = append(cyberArkServiceList[key], service)
+				cyberArkServiceList[uniqueKey] = service
 			} else {
 				// Création du service CLI
 				service, err := services.NewCyberArkCLIService(
@@ -76,17 +77,17 @@ func TestCreateCyberArkServiceList(t *testing.T) {
 					t.Fatalf("Failed to create CyberArk CLIService for %s: %v", key, err)
 				}
 				// Ajout du service à la liste correspondante
-				cyberArkServiceList[key] = append(cyberArkServiceList[key], service)
+				cyberArkServiceList[uniqueKey] = service
 			}
 		}
 	}
 
 	// Vérification que les services ont été créés correctement
-	assert.NotNil(t, cyberArkServiceList["MUT"])
-	assert.NotNil(t, cyberArkServiceList["CIS"])
+	assert.NotNil(t, cyberArkServiceList["MUT-server1"])
+	assert.NotNil(t, cyberArkServiceList["CIS-server2"])
 
 	// Log des services créés pour inspection
-	for key, services := range cyberArkServiceList {
-		t.Logf("Key: %s, Number of services: %d", key, len(services))
+	for key, service := range cyberArkServiceList {
+		t.Logf("Key: %s, Service: %v", key, service)
 	}
 }
