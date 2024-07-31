@@ -10,10 +10,12 @@ import (
 	"services" // Assurez-vous que le package services est bien importé
 )
 
+// Fonction générique pour créer un pointeur vers n'importe quelle valeur
 func ptr[T any](v T) *T {
 	return &v
 }
 
+// Définition des options du serveur
 type ServerOptions struct {
 	cyberArkInstances *string
 }
@@ -52,8 +54,7 @@ func TestCreateCyberArkServiceList(t *testing.T) {
 	// Parcours de chaque instance CyberArk
 	for _, cyberArkInstance := range cyberArkMapping {
 		for key, instance := range cyberArkInstance {
-			// Construction d'une clé unique en utilisant l'appID
-			uniqueKey := fmt.Sprintf("%s-%s", key, instance["appID"])
+			// Utilisation des clés prédéfinies "MUT" et "CIS"
 			if instance["sdkPath"] == "" {
 				// Création du service API
 				service, err := services.NewCyberArkAPIService(
@@ -66,7 +67,7 @@ func TestCreateCyberArkServiceList(t *testing.T) {
 					t.Fatalf("Failed to create CyberArk APIService for %s: %v", key, err)
 				}
 				// Ajout du service à la liste correspondante
-				cyberArkServiceList[uniqueKey] = service
+				cyberArkServiceList[key] = service
 			} else {
 				// Création du service CLI
 				service, err := services.NewCyberArkCLIService(
@@ -77,17 +78,30 @@ func TestCreateCyberArkServiceList(t *testing.T) {
 					t.Fatalf("Failed to create CyberArk CLIService for %s: %v", key, err)
 				}
 				// Ajout du service à la liste correspondante
-				cyberArkServiceList[uniqueKey] = service
+				cyberArkServiceList[key] = service
 			}
 		}
 	}
 
 	// Vérification que les services ont été créés correctement
-	assert.NotNil(t, cyberArkServiceList["MUT-server1"])
-	assert.NotNil(t, cyberArkServiceList["CIS-server2"])
+	assert.NotNil(t, cyberArkServiceList["MUT"])
+	assert.NotNil(t, cyberArkServiceList["CIS"])
 
 	// Log des services créés pour inspection
 	for key, service := range cyberArkServiceList {
 		t.Logf("Key: %s, Service: %v", key, service)
 	}
+
+	// Exemple d'appel de méthode pour le service MUT
+	c, err := someContextCreationFunction()
+	if err != nil {
+		t.Fatalf("Failed to create context: %v", err)
+	}
+	serverPassword, err := cyberArkServiceList["MUT"].GetVaultPassword(c)
+	if err != nil {
+		t.Fatalf("Failed to get vault password: %v", err)
+	}
+
+	// Utiliser le serverPassword
+	fmt.Println("Server Password:", serverPassword)
 }
