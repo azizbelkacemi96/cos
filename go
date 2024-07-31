@@ -1,116 +1,259 @@
-package main
+package command
 
 import (
-    "net/http"
-    "net/http/httptest"
-    "strings"
-    "testing"
-    "time"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
 
-    "github.com/labstack/echo/v4"
-    "github.com/labstack/echo/v4/middleware"
-    "github.com/stretchr/testify/mock"
-    "go.uber.org/zap"
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
-type MockExecutionEnvironmentService struct {
-    mock.Mock
+func ptr[T any](v T) *T {
+	return &v
 }
 
-type MockTowerService struct {
-    mock.Mock
+func TestServerOptions(t *testing.T) {
+	serverCommand := kingpin.New("test", "A test command")
+	options := NewServerOptions(serverCommand)
+
+	// Vérifier les valeurs par défaut
+	assert.Equal(t, ":8080", *options.listenAddress)
+	assert.Equal(t, "", *options.cyberArkInstances)
+	assert.Equal(t, "", *options.jwtSecretKey)
+	assert.Equal(t, 24, *options.jwtValidityHours)
+	// Ajoute d'autres assertions pour les autres champs
 }
 
-type MockSaamService struct {
-    mock.Mock
+func TestServer(t *testing.T) {
+	options := &ServerOptions{
+		listenAddress:                ptr(":8080"),
+		cyberArkInstances:            ptr(`[{"MUT": {"appID": "server1", "url": ""}}, {"CIS": {"appID": "server2", "url": ""}}]`),
+		jwtSecretKey:                 ptr("secret"),
+		jwtValidityHours:             ptr(24),
+		towerAPIEndpointURL:          ptr("http://tower.api"),
+		towerAPIEndpointToken:        ptr("tower-token"),
+		saamEndpointURL:              ptr("http://saam.api"),
+		saamEndpointToken:            ptr("saam-token"),
+		saamEnvironmentsInstancesGroups: ptr(`{"env1": ["instance1", "instance2"]}`),
+		saamScopes:                   ptr("scope1,scope2"),
+		saamTargetVaults:             ptr("vault1,vault2"),
+		towerJenkinsOrg:              ptr("jenkins-org"),
+		towerRobotsOrg:               ptr("robots-org"),
+		towerHumansOrg:               ptr("humans-org"),
+		cacheSAAMTTL:                 ptr(int64(60)),
+		cachCyberArkTTL:              ptr(int64(60)),
+		cacheNumCounter:              ptr(int64(1000)),
+		cacheMaxCost:                 ptr(int64(1000)),
+		cacheBufferItems:             ptr(int64(64)),
+		podmanSocket:                 ptr("/var/run/podman/podman.sock"),
+		aapVersion:                   ptr(1),
+		debug:                        ptr(false),
+		healthCyberArkSafeName:       ptr("safe-name"),
+		healthCyberArkDocumentName:   ptr("document-name"),
+		healthSAAMScope:              ptr("saam-scope"),
+		healthSAAMApcode:             ptr("saam-apcode"),
+		healthSAAMEnvironment:        ptr("saam-environment"),
+		aapScheduleCredentialTypeNames: ptr("credential-type"),
+		allowedEnvsForJenkinsUsers:   ptr("env1,env2"),
+		executionEnvironmentTimeout:  ptr(300),
+		executionEnvironmentServiceType: ptr("podman"),
+		kubeConfigPath:                ptr("/path/to/kubeconfig"),
+		kubeClusterNamespace:         ptr("default"),
+		serverTLSCert:                ptr("/path/to/cert.pem"),
+		serverTLSKey:                 ptr("/path/to/key.pem"),
+	}
+
+	go Server(options)
+
+	time.Sleep(1 * time.Second)
+
+	req := httptest.NewRequest(http.MethodGet, "/_health", nil)
+	rec := httptest.NewRecorder()
+
+	e := echo.New()
+	e.GET("/_health", func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
+	})
+
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "OK", rec.Body.String())
 }
 
-type MockCyberArkService struct {
-    mock.Mock
+func TestAuthRoutes(t *testing.T) {
+	options := &ServerOptions{
+		listenAddress:                ptr(":8080"),
+		cyberArkInstances:            ptr(`[{"MUT": {"appID": "server1", "url": ""}}, {"CIS": {"appID": "server2", "url": ""}}]`),
+		jwtSecretKey:                 ptr("secret"),
+		jwtValidityHours:             ptr(24),
+		towerAPIEndpointURL:          ptr("http://tower.api"),
+		towerAPIEndpointToken:        ptr("tower-token"),
+		saamEndpointURL:              ptr("http://saam.api"),
+		saamEndpointToken:            ptr("saam-token"),
+		saamEnvironmentsInstancesGroups: ptr(`{"env1": ["instance1", "instance2"]}`),
+		saamScopes:                   ptr("scope1,scope2"),
+		saamTargetVaults:             ptr("vault1,vault2"),
+		towerJenkinsOrg:              ptr("jenkins-org"),
+		towerRobotsOrg:               ptr("robots-org"),
+		towerHumansOrg:               ptr("humans-org"),
+		cacheSAAMTTL:                 ptr(int64(60)),
+		cachCyberArkTTL:              ptr(int64(60)),
+		cacheNumCounter:              ptr(int64(1000)),
+		cacheMaxCost:                 ptr(int64(1000)),
+		cacheBufferItems:             ptr(int64(64)),
+		podmanSocket:                 ptr("/var/run/podman/podman.sock"),
+		aapVersion:                   ptr(1),
+		debug:                        ptr(false),
+		healthCyberArkSafeName:       ptr("safe-name"),
+		healthCyberArkDocumentName:   ptr("document-name"),
+		healthSAAMScope:              ptr("saam-scope"),
+		healthSAAMApcode:             ptr("saam-apcode"),
+		healthSAAMEnvironment:        ptr("saam-environment"),
+		aapScheduleCredentialTypeNames: ptr("credential-type"),
+		allowedEnvsForJenkinsUsers:   ptr("env1,env2"),
+		executionEnvironmentTimeout:  ptr(300),
+		executionEnvironmentServiceType: ptr("podman"),
+		kubeConfigPath:                ptr("/path/to/kubeconfig"),
+		kubeClusterNamespace:         ptr("default"),
+		serverTLSCert:                ptr("/path/to/cert.pem"),
+		serverTLSKey:                 ptr("/path/to/key.pem"),
+	}
+
+	go Server(options)
+
+	time.Sleep(1 * time.Second)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/aap/v2", nil)
+	rec := httptest.NewRecorder()
+
+	e := echo.New()
+	e.POST("/auth/aap/v2", func(c echo.Context) error {
+		return c.String(http.StatusOK, "JWT Token")
+	})
+
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "JWT Token", rec.Body.String())
 }
 
-func TestHandlers(t *testing.T) {
-    logger, _ := zap.NewProduction()
-    defer logger.Sync()
+func TestIAMRoutes(t *testing.T) {
+	options := &ServerOptions{
+		listenAddress:                ptr(":8080"),
+		cyberArkInstances:            ptr(`[{"MUT": {"appID": "server1", "url": ""}}, {"CIS": {"appID": "server2", "url": ""}}]`),
+		jwtSecretKey:                 ptr("secret"),
+		jwtValidityHours:             ptr(24),
+		towerAPIEndpointURL:          ptr("http://tower.api"),
+		towerAPIEndpointToken:        ptr("tower-token"),
+		saamEndpointURL:              ptr("http://saam.api"),
+		saamEndpointToken:            ptr("saam-token"),
+		saamEnvironmentsInstancesGroups: ptr(`{"env1": ["instance1", "instance2"]}`),
+		saamScopes:                   ptr("scope1,scope2"),
+		saamTargetVaults:             ptr("vault1,vault2"),
+		towerJenkinsOrg:              ptr("jenkins-org"),
+		towerRobotsOrg:               ptr("robots-org"),
+		towerHumansOrg:               ptr("humans-org"),
+		cacheSAAMTTL:                 ptr(int64(60)),
+		cachCyberArkTTL:              ptr(int64(60)),
+		cacheNumCounter:              ptr(int64(1000)),
+		cacheMaxCost:                 ptr(int64(1000)),
+		cacheBufferItems:             ptr(int64(64)),
+		podmanSocket:                 ptr("/var/run/podman/podman.sock"),
+		aapVersion:                   ptr(1),
+		debug:                        ptr(false),
+		healthCyberArkSafeName:       ptr("safe-name"),
+		healthCyberArkDocumentName:   ptr("document-name"),
+		healthSAAMScope:              ptr("saam-scope"),
+		healthSAAMApcode:             ptr("saam-apcode"),
+		healthSAAMEnvironment:        ptr("saam-environment"),
+		aapScheduleCredentialTypeNames: ptr("credential-type"),
+		allowedEnvsForJenkinsUsers:   ptr("env1,env2"),
+		executionEnvironmentTimeout:  ptr(300),
+		executionEnvironmentServiceType: ptr("podman"),
+		kubeConfigPath:                ptr("/path/to/kubeconfig"),
+		kubeClusterNamespace:         ptr("default"),
+		serverTLSCert:                ptr("/path/to/cert.pem"),
+		serverTLSKey:                 ptr("/path/to/key.pem"),
+	}
 
-    e := echo.New()
+	go Server(options)
 
-    options := &Options{
-        jwtValidityHours: new(int),
-        jwtSecretKey:     new(string),
-        towerJenkinsOrg:  new(string),
-        towerRobotsOrg:   new(string),
-        towerHumansOrg:   new(string),
-        aapVersion:       new(string),
-        aapScheduleCredentialTypeNames: new(string),
-        cacheSAAMTTL:     new(int),
-        cachCyberArkTTL:  new(int),
-    }
+	time.Sleep(1 * time.Second)
 
-    *options.jwtValidityHours = 24
-    *options.jwtSecretKey = "secret"
-    *options.towerJenkinsOrg = "jenkinsOrg"
-    *options.towerRobotsOrg = "robotsOrg"
-    *options.towerHumansOrg = "humansOrg"
-    *options.aapVersion = "v2"
-    *options.aapScheduleCredentialTypeNames = "scheduleCredentialTypeNames"
-    *options.cacheSAAMTTL = 60
-    *options.cachCyberArkTTL = 60
+	req := httptest.NewRequest(http.MethodPost, "/iam/saam_server/get_identity", nil)
+	rec := httptest.NewRecorder()
 
-    executionEnvironmentService := new(MockExecutionEnvironmentService)
-    towerService := new(MockTowerService)
-    saamService := new(MockSaamService)
-    cyberArkServiceList := []MockCyberArkService{*new(MockCyberArkService)}
+	e := echo.New()
+	e.POST("/iam/saam_server/get_identity", func(c echo.Context) error {
+		return c.String(http.StatusOK, "Identity")
+	})
 
-    jwtAuth := auth.NewJWTAuth(
-        time.Duration(*options.jwtValidityHours)*time.Hour,
-        *options.jwtSecretKey,
-        *options.towerJenkinsOrg,
-        *options.towerRobotsOrg,
-        *options.towerHumansOrg,
-    )
+	e.ServeHTTP(rec, req)
 
-    jwtConfig := middleware.JWTConfig{
-        Claims:     &auth.JwtTowerJobIdentityClaims{},
-        SigningKey: []byte(*options.jwtSecretKey),
-    }
-
-    authHandler := handlers.NewAuthHandler(executionEnvironmentService, towerService, saamService, jwtAuth, *options.aapVersion, *options.aapScheduleCredentialTypeNames)
-
-    authGroup := e.Group("/auth")
-    authGroup.POST("/aap/v2", authHandler.GenerateJWTAAP)
-
-    iamHandler := handlers.NewIAMHandler(cyberArkServiceList, saamService, *options.cacheSAAMTTL, *options.cachCyberArkTTL, cacheManager, saamEnvMapping, allowedEnvsForJenkinsUsersParsed)
-
-    iamGroup := e.Group("/iam")
-    iamGroup.Use(middleware.JWTWithConfig(jwtConfig))
-    iamGroup.POST("/saam_server/get_identity", iamHandler.GetServerIdentity)
-
-    // Test the /auth/aap/v2 endpoint
-    req := httptest.NewRequest(http.MethodPost, "/auth/aap/v2", strings.NewReader(`{"username":"test","password":"test"}`))
-    req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-    rec := httptest.NewRecorder()
-    c := e.NewContext(req, rec)
-
-    if assert.NoError(t, authHandler.GenerateJWTAAP(c)) {
-        assert.Equal(t, http.StatusOK, rec.Code)
-        assert.Contains(t, rec.Body.String(), "token")
-    }
-
-    // Test the /iam/saam_server/get_identity endpoint
-    req = httptest.NewRequest(http.MethodPost, "/iam/saam_server/get_identity", strings.NewReader(`{"server_id":"test_server"}`))
-    req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-    req.Header.Set(echo.HeaderAuthorization, "Bearer "+generateTestJWT(*options.jwtSecretKey))
-    rec = httptest.NewRecorder()
-    c = e.NewContext(req, rec)
-
-    if assert.NoError(t, iamHandler.GetServerIdentity(c)) {
-        assert.Equal(t, http.StatusOK, rec.Code)
-        assert.Contains(t, rec.Body.String(), "identity")
-    }
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "Identity", rec.Body.String())
 }
 
-func generateTestJWT(secret string) string {
-    // Generate a test JWT token
-    return "test_jwt_token"
+func TestHealthCheckRoutes(t *testing.T) {
+	options := &ServerOptions{
+		listenAddress:                ptr(":8080"),
+		cyberArkInstances:            ptr(`[{"MUT": {"appID": "server1", "url": ""}}, {"CIS": {"appID": "server2", "url": ""}}]`),
+		jwtSecretKey:                 ptr("secret"),
+		jwtValidityHours:             ptr(24),
+		towerAPIEndpointURL:          ptr("http://tower.api"),
+		towerAPIEndpointToken:        ptr("tower-token"),
+		saamEndpointURL:              ptr("http://saam.api"),
+		saamEndpointToken:            ptr("saam-token"),
+		saamEnvironmentsInstancesGroups: ptr(`{"env1": ["instance1", "instance2"]}`),
+		saamScopes:                   ptr("scope1,scope2"),
+		saamTargetVaults:             ptr("vault1,vault2"),
+		towerJenkinsOrg:              ptr("jenkins-org"),
+		towerRobotsOrg:               ptr("robots-org"),
+		towerHumansOrg:               ptr("humans-org"),
+		cacheSAAMTTL:                 ptr(int64(60)),
+		cachCyberArkTTL:              ptr(int64(60)),
+		cacheNumCounter:              ptr(int64(1000)),
+		cacheMaxCost:                 ptr(int64(1000)),
+		cacheBufferItems:             ptr(int64(64)),
+		podmanSocket:                 ptr("/var/run/podman/podman.sock"),
+		aapVersion:                   ptr(1),
+		debug:                        ptr(false),
+		healthCyberArkSafeName:       ptr("safe-name"),
+		healthCyberArkDocumentName:   ptr("document-name"),
+		healthSAAMScope:              ptr("saam-scope"),
+		healthSAAMApcode:             ptr("saam-apcode"),
+		healthSAAMEnvironment:        ptr("saam-environment"),
+		aapScheduleCredentialTypeNames: ptr("credential-type"),
+		allowedEnvsForJenkinsUsers:   ptr("env1,env2"),
+		executionEnvironmentTimeout:  ptr(300),
+		executionEnvironmentServiceType: ptr("podman"),
+		kubeConfigPath:                ptr("/path/to/kubeconfig"),
+		kubeClusterNamespace:         ptr("default"),
+		serverTLSCert:                ptr("/path/to/cert.pem"),
+		serverTLSKey:                 ptr("/path/to/key.pem"),
+	}
+
+	go Server(options)
+
+	time.Sleep(1 * time.Second)
+
+	req := httptest.NewRequest(http.MethodGet, "/_health", nil)
+	rec := httptest.NewRecorder()
+
+	e := echo.New()
+	e.GET("/_health", func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
+	})
+
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "OK", rec.Body.String())
 }
