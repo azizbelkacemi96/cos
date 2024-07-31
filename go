@@ -2,12 +2,10 @@ package command
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
-	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"go.uber.org/zap"
 
 	"services" // Assurez-vous que le package services est bien importé
 )
@@ -49,7 +47,7 @@ func TestCreateCyberArkServiceList(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Création de la liste de services CyberArk
-	cyberArkServiceList := make(map[string]services.CyberArkServiceInterface)
+	cyberArkServiceList := make(map[string][]services.CyberArkServiceInterface)
 
 	// Parcours de chaque instance CyberArk
 	for idx, cyberArkInstance := range cyberArkMapping {
@@ -66,8 +64,8 @@ func TestCreateCyberArkServiceList(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Failed to create CyberArk APIService for %s: %v", key, err)
 				}
-				uniqueKey := fmt.Sprintf("%s-%d", key, idx)
-				cyberArkServiceList[uniqueKey] = service
+				// Ajout du service à la liste correspondante
+				cyberArkServiceList[key] = append(cyberArkServiceList[key], service)
 			} else {
 				// Création du service CLI
 				service, err := services.NewCyberArkCLIService(
@@ -77,16 +75,18 @@ func TestCreateCyberArkServiceList(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Failed to create CyberArk CLIService for %s: %v", key, err)
 				}
-				uniqueKey := fmt.Sprintf("%s-%d", key, idx)
-				cyberArkServiceList[uniqueKey] = service
+				// Ajout du service à la liste correspondante
+				cyberArkServiceList[key] = append(cyberArkServiceList[key], service)
 			}
 		}
 	}
 
 	// Vérification que les services ont été créés correctement
-	assert.NotNil(t, cyberArkServiceList["MUT-0"])
-	assert.NotNil(t, cyberArkServiceList["CIS-0"])
+	assert.NotNil(t, cyberArkServiceList["MUT"])
+	assert.NotNil(t, cyberArkServiceList["CIS"])
 
 	// Log des services créés pour inspection
-	t.Logf("cyberArkServiceList: %+v", cyberArkServiceList)
+	for key, services := range cyberArkServiceList {
+		t.Logf("Key: %s, Number of services: %d", key, len(services))
+	}
 }
