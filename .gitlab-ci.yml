@@ -1,0 +1,182 @@
+include:
+  - project: "${GITLAB_CICD_PIPELINES_PROJECT}" # Production-mutualisee/IPS/IDO/gitlab-cicd/pipelines
+    file: "${GITLAB_CICD_PIPELINES_FILE}" # gitlab-ci.yml
+
+image: "${CI_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_IMAGE_TAG}" # $CI_REGISTRY/cloudtools:1.2.3
+
+variables:
+  VAULT_ADDR: "${VAULT_SERVER_URL}" # https://hvault.staging.echonet
+  VAULT_NAMESPACE: "${VAULT_NAMESPACE_ID}" # AP26482
+  VAULT_AUTH_NAME: "${VAULT_AUTH_METHOD}" # promote-docker-image-58376
+  VAULT_ROLE: "${VAULT_ROLE_NAME}" # promote-docker-image
+  TF_ROOT: "${CI_PROJECT_DIR}" # $(CI_PROJECT_DIR)
+  TF_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/terraform" # ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/terraform
+  ALLOW_REPLACE_ON_APPLY: "true" # true
+  IBM_ACCOUNT_ID: "${IBM_CLOUD_ACCOUNT_ID}" # ac0021000263
+  REALM_ID: "${IBM_CLOUD_REALM_ID}" # r10021000090
+  HTTPS_PROXY: "${HTTPS_PROXY_URL}" # http://bizproxy.fr.net.intra:3131
+  NO_PROXY: "${NO_PROXY_DOMAINS}" # *.int.staging-echonet
+  ARTIFACTORY_URL: "${JFROG_ARTIFACTORY_URL}" # https://repo.artifactory-dogen.group.echonet
+  ARTIFACTORY_USER: "${JFROG_ARTIFACTORY_USER}" # (Artifactory user placeholder)
+  ARTIFACTORY_PASSWORD: "${JFROG_ARTIFACTORY_PASSWORD}" # (Artifactory password placeholder)
+  LOGIN_STAGE_TAG: "${LOGIN_STAGE_TAG}" # ocp_l
+  EXTRACT_STAGE_TAG: "${EXTRACT_STAGE_TAG}" # ocp_l
+  GLOBAL_STAGE_TAG: "${GLOBAL_STAGE_TAG}" # ocp_l
+  TAINT_STAGE_TAG: "${TAINT_STAGE_TAG}" # ocp_l
+  UNTAINT_STAGE_TAG: "${UNTAINT_STAGE_TAG}" # ocp_l
+
+cache:
+  key: "${TF_ROOT}" # ${TF_ROOT}
+  paths:
+    - "${TF_ROOT}/.terraform/" # $(TF_ROOT}/.terraform/
+
+prepare_env:
+  &prepare_env
+  before_script:
+    - export IBM_CLOUD_API_KEY="$(cat credentials.env | grep IBM_CLOUD_API_KEY | cut -d '=' -f2)"
+    - export HTTPS_PROXY=${HTTPS_PROXY} # http://bizproxy.fr.net.intra:3131
+    - export NO_PROXY=${NO_PROXY} # *.int.staging-echonet
+    - jfrog config add --interactive=false --url ${ARTIFACTORY_URL} --user ${ARTIFACTORY_USER} --password ${ARTIFACTORY_PASSWORD}
+    - jfrog config show
+    - TOKEN_JF=$(jfrog rt access-token-create | jq -r ".access_token")
+
+    - cat <<EOF > $HOME/.terraform.d/credentials.tfrc.json
+      {
+        "credentials": {
+          "${ARTIFACTORY_URL}": {
+            "token": "${TOKEN_JF}"
+          }
+        }
+      }
+      EOF
+
+    - cat <<EOF > $HOME/.terraformrc
+      provider_installation {
+        direct {
+          exclude = ["registry.terraform.io/*/*"]
+        }
+        network_mirror {
+          url = "${ARTIFACTORY_URL}/api/terraform/terraform-providers/providers"
+        }
+      }
+      EOF
+
+stages:
+  - login
+  - extract
+  - global
+  - trigger
+
+login-job:
+  stage: login
+  allow_failure: false
+  tags:
+    - "${LOGIN_STAGE_TAG}" # ocp_l
+  script:
+    - export VAULT_TOKEN="$(vault write -field=token auth/${VAULT_AUTH_NAME} role=${VAULT_ROLE} jwt=$CI_JOB_JWT)"
+    - echo "IBM_CLOUD_API_KEY=$(vault read -field=api_key ibm_${IBM_ACCOUNT_ID}/creds/${REALM_ID}_buhub )" > credentials.env
+  artifacts:
+    expire_in: 120s
+    paths:
+      - credentials.env
+
+generate-child-pipeline:
+  stage: extract
+  tags:
+    - "${EXTRACT_STAGE_TAG}" # ocp_l
+  allow_failure: false
+  <<: *prepare_env
+  script:
+    - |
+      terraform init -reconfigure \
+      -backend-config="username=gitlab-ci-token" \
+      -backend-config="password=${CI_JOB_TOKEN}" \
+      -backend-config="address=${TF_ADDRESS}" \
+      -backend-config="lock_address=${TF_ADDRESS}/lock" \
+      -backend-config="unlock_address=${TF_ADDRESS}/lock" \
+      -backend-config="lock_method=POST" \
+      -backend-config="unlock_method=DELETE" \
+      -backend-config="retry_wait_min=5"
+    - terraform plan
+    - terraform state list > resources.txt
+    - cat resources.txt
+    - |
+      cat <<EOF > custom.yml
+      image: ${CI_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_IMAGE_TAG} # $CI_REGISTRY/cloudtools:1.2.3
+
+      variables:
+        VAULT_ADDR: "${VAULT_SERVER_URL}" # https://hvault.staging.echonet
+        VAULT_NAMESPACE: "${VAULT_NAMESPACE_ID}" # AP26482
+        VAULT_AUTH_NAME: "${VAULT_AUTH_METHOD}" # promote-docker-image-58376
+        VAULT_ROLE: "${VAULT_ROLE_NAME}" # promote-docker-image
+        TF_ROOT: ${CI_PROJECT_DIR} # $(CI_PROJECT_DIR)
+        TF_ADDRESS: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/terraform # ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/terraform
+        ALLOW_REPLACE_ON_APPLY: "true" # true
+        IBM_ACCOUNT_ID: "${IBM_CLOUD_ACCOUNT_ID}" # ac0021000263
+        REALM_ID: "${IBM_CLOUD_REALM_ID}" # r10021000090
+        stages:
+          - login
+          - taint
+          - untaint
+          - refresh-resource
+          - apply-resource
+
+      .prepar_env: &prepare_env
+        before_script:
+          - export IBM_CLOUD_API_KEY="$(cat credentials.env | grep IBM_CLOUD_API_KEY | cut -d '=' -f2)"
+          - export HTTPS_PROXY=${HTTPS_PROXY} # http://bizproxy.fr.net.intra:3131
+          - export NO_PROXY=${NO_PROXY} # *.int.staging-echonet
+          - mkdir -p $HOME/.terraform.d
+          - jfrog config add --interactive=false --url ${ARTIFACTORY_URL} --user ${ARTIFACTORY_USER} --password ${ARTIFACTORY_PASSWORD}
+          - TOKEN_JFROG=$(jfrog rt access-token-create | jq -r ".access_token")
+          - |
+            cat <<EOF > $HOME/.terraform.d/credentials.tfrc.json
+            {
+              "credentials": {
+                "${ARTIFACTORY_URL}": {
+                  "token": "${TOKEN_JFROG}"
+                }
+              }
+            }
+            EOF
+          - |
+            cat <<EOF > $HOME/.terraformrc
+            provider_installation {
+              direct {
+                exclude = ["registry.terraform.io/*/*"]
+              }
+              network_mirror {
+                url = "${ARTIFACTORY_URL}/api/terraform/terraform-providers/providers"
+              }
+            }
+            EOF
+
+      login-job:
+        stage: login
+        allow_failure: false
+        tags:
+          - "${LOGIN_STAGE_TAG}" # ocp_l
+        script:
+          - export VAULT_TOKEN="$(vault write -field=token auth/${VAULT_AUTH_NAME} role=${VAULT_ROLE} jwt=$CI_JOB_JWT)"
+          - echo "IBM_CLOUD_API_KEY=$(vault read -field=api_key ibm_${IBM_ACCOUNT_ID}/creds/${REALM_ID}_buhub )" > credentials.env
+        artifacts:
+          expire_in: 120s
+          paths:
+            - credentials.env
+      EOF
+      - |
+        while IFS= read -r ressource; do
+          ressource_clean=$(echo "$ressource" | awk -F "_" '{print $3"_"$4}' | awk -F "\\.this\\[|\\]" '{print $1"_"$2}' | tr -d '"' | tr -d '.')
+          cat <<EOF >> custom.yml
+        taint-${ressource_clean}:
+          stage: taint
+          tags:
+            - "${TAINT_STAGE_TAG}" # ocp_l
+          when: manual
+          <<: *prepare_env
+          script:
+            - terraform init -reconfigure -backend-config="username=gitlab-ci-token" -backend-config="password=${CI_JOB_TOKEN}" -backend-config="address=${TF_ADDRESS}" -backend-config="lock_address=${TF_ADDRESS}/lock" -backend-config="unlock_address=${TF_ADDRESS}/lock" -backend-config="lock_method=POST" -backend-config="unlock_method=DELETE" -backend-config="retry_wait_min=5"
+            - terraform taint '${ressource}'
+          environment:
+            name: dev
+        untaint-${ressource_clean}:
