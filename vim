@@ -1,0 +1,13 @@
+syntax enable
+set number
+set relativenumber
+set tabstop=4
+set shiftwidth=4
+set expandtab
+set smartcase
+set hlsearch
+colorscheme gruvbox
+set background=dark
+call plug#begin('~/.vim/plugged')
+Plug 'morhetz/gruvbox'
+call plug#end()
