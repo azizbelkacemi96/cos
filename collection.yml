@@ -1,0 +1,74 @@
+stages:
+  - parallel
+  - test
+  - generate_galaxy
+  - build
+  - publish
+
+variables:
+  RHEL_VERSION: "8.6"
+  PYTHON_VERSION: ["3.6", "3.8", "3.9"]
+
+parallel:
+  stage: parallel
+  script:
+    - echo "Running parallel tests"
+    - chmod 755 .
+    - pipenv install -d
+    - pipenv run flake8 . || true
+    - pipenv run pylint plugins || true
+    - pipenv run ansible-test sanity
+    - pipenv run ansible-inventory -i dyn_middleware_p360.yml --graph
+    - pipenv run ansible-inventory -i dyn_middleware_p360.yml --list | grep "OS_RHEL_8.4"
+    - pipenv run ansible-inventory -i dyn_middleware_p360.yml --graph
+    - pipenv run ansible-inventory -i dyn_middleware_p360.yml --list
+
+test:
+  stage: test
+  script:
+    - echo "Running tests"
+    - pipenv run pytest tests/
+
+generate_galaxy:
+  stage: generate_galaxy
+  script:
+    - if [[ "$CI_COMMIT_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+        echo "Valid tag detected: $CI_COMMIT_TAG";
+        pip install jinja2-cli;
+        jinja2 galaxy.yml.j2 -D release_collection_version="$CI_COMMIT_TAG" > galaxy.yml;
+      else
+        echo "No valid tag found, skipping galaxy.yml generation";
+      fi
+  artifacts:
+    paths:
+      - galaxy.yml
+  only:
+    - tags  # Exécute cette étape uniquement sur un tag
+
+build:
+  stage: build
+  script:
+    - if [[ -f "galaxy.yml" ]]; then
+        echo "galaxy.yml exists, proceeding with build";
+        ansible-galaxy collection build -v;
+      else
+        echo "No galaxy.yml found, skipping build";
+      fi
+  artifacts:
+    paths:
+      - "*.tar.gz"
+  only:
+    - tags  # Exécute cette étape uniquement sur un tag
+
+publish:
+  stage: publish
+  script:
+    - if [[ -f "galaxy.yml" ]]; then
+        echo "Publishing collection...";
+        export COLLECTION_FILE=$(ls -1 *.tar.gz | head -n 1);
+        ansible-galaxy collection publish --api-key $PRIVATE_HUB_TOKEN --server $PRIVATE_HUB_URL $COLLECTION_FILE;
+      else
+        echo "No build artifact found, skipping publish";
+      fi
+  only:
+    - tags  # Exécute cette étape uniquement sur un tag
