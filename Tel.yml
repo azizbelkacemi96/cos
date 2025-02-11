@@ -1,11 +1,8 @@
-project_name: promote-cli
-
-before:
-  hooks:
-    - go mod tidy
+version: "2"
 
 builds:
   - id: promote-cli
+    main: ./main.go  # Corrigé pour la racine
     env:
       - CGO_ENABLED=0
     goos:
@@ -16,33 +13,31 @@ builds:
       - amd64
       - arm64
     binary: promote-cli
-    main: ./cmd/promote-cli # Assurez-vous que c'est bien ici que ton main.go est appelé
     ldflags:
-      - "-s -w"
-      - "-X vault.version={{ .Version }}"
-      - "-X vault.commit={{ .Commit }}"
-      - "-X vault.date={{ .Date }}"
-    output: "dist/{{ .Os }}_{{ .Arch }}/promote-cli"
+      - "-X 'main.version={{.Version}}' -X 'main.buildDate={{.Date}}' -X 'main.commit={{.Commit}}'"
 
 archives:
-  - id: promote-cli
+  - id: promote-cli-archive
     format: tar.gz
     name_template: "promote-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    builds:
-      - promote-cli
+    files:
+      - README.md
+      - LICENSE
 
-  - id: promote-cli-zip
-    format: zip
-    name_template: "promote-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    builds:
-      - promote-cli
-    replaces_existing_files: true
+snapshot:
+  name_template: "{{ .Tag }}-snapshot"
 
-artifactory:
-  name: production
-  mode: archive
-  target: "https://p-1768-docker-local.artifactory.dogen.group.echonet"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
 
-blob:
-  - provider: gitlab
-    path: "gitlab-releases/{{ .Version }}"
+dockers:
+  - image_templates:
+      - "artifactory.example.com/promote-cli:{{ .Version }}"
+    dockerfile: Dockerfile
+    goos: linux
+    goarch:
+      - amd64
+      - arm64
