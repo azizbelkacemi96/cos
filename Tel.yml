@@ -1,0 +1,47 @@
+project_name: promote-cli
+
+before:
+  hooks:
+    - echo "Building promote-cli..."
+
+builds:
+  - id: promote-cli
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=0
+    binary: promote-cli
+    ldflags:
+      - "-X main.version={{ .Version }} -X main.buildDate={{ .Date }}"
+    artifacts:
+      - name_template: "promote-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+dockers:
+  - image_templates:
+      - "{{ .Env.ARTIFACTORY_REGISTRY }}/{{ .Env.IMAGE_TARGET }}:{{ .Version }}"
+      - "{{ .Env.ARTIFACTORY_REGISTRY }}/{{ .Env.IMAGE_TARGET }}:latest"
+    dockerfile: Dockerfile
+    goos: linux
+    goarch: amd64
+    extra_files:
+      - promote-cli
+
+artifacts:
+  - name: production
+    path: "promote-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    type: binary
+
+release:
+  github:
+    owner: my-org
+    name: my-repo
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "**WIP**"
