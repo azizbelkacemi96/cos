@@ -2,46 +2,49 @@ project_name: promote-cli
 
 before:
   hooks:
-    - echo "Building promote-cli..."
+    - go mod tidy
 
 builds:
   - id: promote-cli
+    env:
+      - CGO_ENABLED=0
     goos:
       - linux
       - windows
       - darwin
     goarch:
       - amd64
-    env:
-      - CGO_ENABLED=0
+      - arm64
     binary: promote-cli
     ldflags:
-      - "-X main.version={{ .Version }} -X main.buildDate={{ .Date }}"
-    artifacts:
-      - name_template: "promote-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+      - "-s -w"
+      - "-X main.version={{ .Version }}"
+      - "-X main.commit={{ .Commit }}"
+      - "-X main.date={{ .Date }}"
+    output: "out/{{ .Os }}_{{ .Arch }}/promote-cli"
 
-dockers:
-  - image_templates:
-      - "{{ .Env.ARTIFACTORY_REGISTRY }}/{{ .Env.IMAGE_TARGET }}:{{ .Version }}"
-      - "{{ .Env.ARTIFACTORY_REGISTRY }}/{{ .Env.IMAGE_TARGET }}:latest"
-    dockerfile: Dockerfile
-    goos: linux
-    goarch: amd64
-    extra_files:
+archives:
+  - id: promote-cli
+    format: tar.gz
+    name_template: "promote-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds:
       - promote-cli
 
-artifacts:
-  - name: production
-    path: "promote-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    type: binary
+  - id: promote-cli-zip
+    format: zip
+    name_template: "promote-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds:
+      - promote-cli
+    replaces_existing_files: true
 
 release:
   github:
     owner: my-org
     name: my-repo
+    draft: false
+    prerelease: auto
 
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "**WIP**"
+artifactory:
+  name: production
+  mode: archive
+  target: "https://p-1768-docker-local.artifactory.dogen.group.echonet"
