@@ -16,12 +16,13 @@ builds:
       - amd64
       - arm64
     binary: promote-cli
+    main: ./cmd/promote-cli # Assurez-vous que c'est bien ici que ton main.go est appelé
     ldflags:
       - "-s -w"
-      - "-X main.version={{ .Version }}"
-      - "-X main.commit={{ .Commit }}"
-      - "-X main.date={{ .Date }}"
-    output: "out/{{ .Os }}_{{ .Arch }}/promote-cli"
+      - "-X vault.version={{ .Version }}"
+      - "-X vault.commit={{ .Commit }}"
+      - "-X vault.date={{ .Date }}"
+    output: "dist/{{ .Os }}_{{ .Arch }}/promote-cli"
 
 archives:
   - id: promote-cli
@@ -37,14 +38,11 @@ archives:
       - promote-cli
     replaces_existing_files: true
 
-release:
-  github:
-    owner: my-org
-    name: my-repo
-    draft: false
-    prerelease: auto
-
 artifactory:
   name: production
   mode: archive
   target: "https://p-1768-docker-local.artifactory.dogen.group.echonet"
+
+blob:
+  - provider: gitlab
+    path: "gitlab-releases/{{ .Version }}"
