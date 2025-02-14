@@ -1,0 +1,26 @@
+publish_to_artifactory:
+  stage: publish
+  script:
+    - |
+      # Utilisation directe du tag ou fallback sur le commit SHA
+      RELEASE_NAME="${CI_COMMIT_TAG:-$CI_COMMIT_SHA}"
+
+      # Définition du dossier cible sur Artifactory
+      TARGET_PATH="$ARTIFACTORY_URL/$ARTIFACTORY_REPO/$RELEASE_NAME"
+
+      echo "📂 Création du dossier: $TARGET_PATH"
+
+      # Vérification des fichiers dans dist/
+      echo "🔍 Vérification des fichiers dans dist/"
+      ls -l dist/
+
+      # Upload uniquement les fichiers zip et tar.gz
+      for file in dist/*.{zip,tar.gz}; do
+        if [ -f "$file" ]; then
+          echo "⬆️ Upload de $file vers $TARGET_PATH"
+          curl -u "$ARTIFACTORY_USER:$ARTIFACTORY_PASSWORD" \
+            -T "$file" "$TARGET_PATH/$(basename "$file")"
+        else
+          echo "⚠️ Aucun fichier zip ou tar.gz trouvé dans dist/"
+        fi
+      done
