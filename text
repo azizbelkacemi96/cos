@@ -1,0 +1,41 @@
+🔹 Contexte
+Actuellement, le portail DevOps propose deux types de pipelines :
+
+Les pipelines CI dédiés à l'intégration continue, principalement utilisés par les développeurs.
+Les pipelines CD dédiés au déploiement continu, où les développeurs ont uniquement un rôle de reporter dans GitLab.
+Cette séparation pose un problème, notamment pour les développeurs qui sont responsables de la construction des Charts Helm mais qui ne peuvent pas les tester, car ils n'ont pas les droits nécessaires pour lancer des builds dans les pipelines CD.
+
+🛠️ Besoin
+Pour améliorer la collaboration entre les développeurs et les Ops, nous souhaitons introduire un nouveau type de pipeline : CI/CD, qui offrira plus de flexibilité tout en assurant une gouvernance claire des rôles et des responsabilités.
+
+Ce modèle devra répondre aux exigences suivantes :
+
+1️⃣ Gestion des rôles et permissions
+Les développeurs auront le rôle developer dans GitLab. Ils pourront :
+Construire et tester leurs Charts Helm et autres artefacts nécessaires.
+Soumettre des merge requests pour intégrer leurs modifications.
+Les Ops auront le rôle maintainer dans GitLab et seront responsables de :
+La validation des modifications critiques.
+La gestion des branches protégées.
+La mise en production des changements validés.
+2️⃣ Structure et protection des branches
+Mise en place de branches protégées (develop, main), avec les règles suivantes :
+Seuls les maintainers peuvent pousser directement sur ces branches.
+Les développeurs doivent obligatoirement passer par des merge requests.
+3️⃣ Automatisation et CI/CD unifié
+Un modèle de pipeline CI/CD qui inclut :
+La possibilité pour les développeurs de lancer des builds et de tester leurs Charts Helm avant soumission.
+Un processus de validation et d’intégration automatisé avant déploiement.
+Une gestion centralisée dans le portail DevOps tout en respectant la gouvernance définie.
+🎯 Bénéfices attendus
+✅ Permettre aux développeurs de tester et valider leurs artefacts (notamment les Charts Helm).
+✅ Améliorer la collaboration entre Dev et Ops en unifiant CI et CD sous un modèle cohérent.
+✅ Assurer la sécurisation des branches critiques tout en donnant plus d'autonomie aux développeurs.
+✅ Fluidifier le cycle de développement et de déploiement en réduisant les blocages liés aux permissions.
+
+📌 Actions demandées
+Nous souhaitons que l’équipe en charge du portail DevOps :
+
+Ajoute un nouveau modèle de pipeline CI/CD permettant aux développeurs de tester leurs builds tout en maintenant une gouvernance stricte des branches protégées.
+Implémente la gestion des rôles définie ci-dessus dans GitLab.
+Assure l’intégration fluide de ce modèle dans l’existant.
